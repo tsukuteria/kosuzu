@@ -1,90 +1,157 @@
 # kosuzu
 
-VOICEVOX を使う Discord 読み上げ Bot です。`/ping`、`/join`、`/leave`、`/skip`、`/voice`、`/dict`、`/config`、`/speaker`、`/credits` と自動入退室・読み上げに対応しています。
+VOICEVOX で Discord の投稿を読み上げる Bot です。サークルの自宅 PC・個人サーバーで常駐させて使います。
 
-## 準備
+- `/join`・`/leave` による手動入退室と、VC の利用開始・無人化に応じた自動入退室。
+- テキストチャンネルと VC チャットの読み上げ、URL・コード等の省略、順番どおりの再生。
+- メンバーごとのキャラ・スタイル・話速・ピッチ、サーバー辞書、固定読み上げ先などの設定。
+- 管理者による追加キャラの有効化、利用キャラのクレジット公開。設定は SQLite に保存。
 
-- Node.js 24
-- Discord アプリケーションの Developer Portal で Message Content Intent を有効化
-- Developer Portal の「Installation」で Guild Install を有効にし、スコープに `bot` と `applications.commands` を設定（User Install は無効でも可）
-- `bot` と `applications.commands` のスコープで Bot をサーバーに招待
-- Bot に View Channel（チャンネルを見る）、Send Messages（メッセージを送信）、Connect（接続）、Speak（発言）の権限を付与
+## 必要なもの
 
-## 起動
+- Bot を招待できる Discord サーバーと、Discord アプリケーション。
+- Docker 運用: Docker Engine / Docker Desktop と Docker Compose v2。
+- Docker を使わない運用: Node.js **24 LTS** と npm、VOICEVOX デスクトップ版または VOICEVOX ENGINE。導入・ビルドには開発依存も必要です。
+- Discord へ HTTPS・WebSocket・外向き UDP で接続できるネットワーク。Bot のポート公開は不要です。
 
-1. `npm install` を実行します。
-2. `.env.example` を `.env` にコピーし、トークンとアプリケーション ID を設定します。開発用サーバー ID を指定すると、そのサーバーにコマンドを登録します。
-3. `npm run deploy-commands` でコマンドを登録します。表示されない場合は Discord クライアントの再読み込み（Ctrl+R）が必要なことがあります。
-4. `npm start` でビルドして起動します。
+音声は PCM を直接処理するため FFmpeg は不要です。Opus は `opusscript`、DAVE（音声 E2EE）は `@discordjs/voice` の依存 `@snazzah/davey` を使用します。
 
-## VOICEVOX ENGINE の起動
+## Discord の準備
 
-`docker compose up -d` で CPU 版エンジンを起動します（Bot は `npm start` で別途起動）。Docker を使わない場合は、VOICEVOX デスクトップ版または ENGINE をローカルで起動してください。既定の接続先は `http://127.0.0.1:50021` です。変更する場合は `.env` の `VOICEVOX_URL` を設定します。
+1. [Discord Developer Portal](https://discord.com/developers/applications) で **New Application** を作成し、General Information の **Application ID** を控えます。
+2. **Bot** ページで Bot トークンを発行（必要なら Reset Token）し、後述の `.env` の `DISCORD_TOKEN` に保存します。トークンをチャットや Git に貼らないでください。
+3. 同じページの **Privileged Gateway Intents → Message Content Intent** を有効にして保存します。通常投稿の読み上げに必須です。
+4. **Installation → Installation Contexts** で **Guild Install** を有効にします。User Install は不要です。Default Install Settings の Guild Install に scopes **bot** と **applications.commands** を設定します。[公式の導入手順](https://github.com/discord/discord-api-docs/blob/main/developers/quick-start/getting-started.mdx)も参照できます。
+5. Bot Permissions に **View Channels / Send Messages / Read Message History / Connect / Speak / Use Voice Activity** を付けます。この6権限の整数値は **36768768** です。さらに一覧・クレジットの埋め込み表示用に **Embed Links** を付け、推奨値を **36785152** とします（[権限ビット定義](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx)）。Administrator は不要です。
+6. 下記 URL の `<ID>` を Application ID に置き換えて開き、サーバーへ招待します。対象のテキストチャンネルと VC の権限上書きでも閲覧・送信・接続・発言を許可してください。
 
-エンジンの起動後、`npm run voicevox:smoke` でバージョン・話者を確認し、短い音声を `data/smoke.wav` に保存できます。`npm run voicevox:smoke -- 3` のようにスタイル ID を指定できます（既定は 3、ずんだもん ノーマル）。Discord の設定は不要です。生成音声を公開する際は、ログに出る `VOICEVOX:キャラ名` のクレジットを表記し、各キャラクターの利用規約に従ってください。
+```text
+https://discord.com/oauth2/authorize?client_id=<ID>&scope=bot+applications.commands&permissions=36785152
+```
 
-`VOICEVOX_TIMEOUT_MS` でリクエストのタイムアウトを変更できます（既定 15000ms、GET は最大 5000ms）。エンジンが停止していても Bot は起動・稼働を続けます。
+6権限だけのテンプレートは `https://discord.com/oauth2/authorize?client_id=<ID>&scope=bot+applications.commands&permissions=36768768` です。埋め込みを使うコマンドには Embed Links を追加してください。
 
-## 読み上げ
+## Docker で導入する（推奨）
 
-VOICEVOX ENGINE を起動し、VC に参加して、読み上げたいテキストチャンネルで `/join` を実行します。Bot が「接続しました」と読み上げ、実行チャンネルと VC 内蔵チャットのメッセージを順番に読み上げます。`/join`・`/skip`・`/leave` の実行結果は公開返信です（入力・権限エラーは非公開）。`/skip` で現在の発話を飛ばし、`/leave` で退出します。同じ VC で `/join` を再実行すると読み上げ対象を変更でき、別の VC から実行すると移動します。
+リポジトリを取得し、そのディレクトリで実行します。
 
-既定の話者はスタイル ID 3（VOICEVOX:ずんだもん）。`DEFAULT_STYLE_ID` で話者を変更できます。利用するキャラクターの規約に従ってください。
+```sh
+cp .env.example .env
+```
 
-接続時は VC 内の人間の設定をユーザー → サーバー既定 → `DEFAULT_STYLE_ID` の順で解決し、「現在設定されているキャラクター：VOICEVOX:ずんだもん、VOICEVOX:四国めたん」のように公開表示します。メンバーの列挙順で並べ、同じキャラクターの別スタイルは UUID でまとめます。手動接続では `/join` の公開返信に含めます。同じ VC での対象更新では一覧を再掲せず、最初の通知先を保ちます。
+PowerShell では `Copy-Item .env.example .env` を使えます。`.env` を編集し、最低限次を設定します。
 
-セッション内で未表示のキャラを使う発話は、キュー投入時に通知先へ「VOICEVOX:キャラ名 を追加で使用します」と投稿します。VC 外からの対象テキスト投稿、`/voice set` 後の発話、接続音声にも適用します。通知の送信完了を待たずにキューへ追加するため、発話順は変わりません。VC 移動では表示済み UUID を引き継ぎ、退出後の新規セッションでリセットします。外部移動では通知先も保ち、別 VC への `/join` は新しい公開返信先へ変更します。送信に失敗しても読み上げは継続し、警告ログを記録して次の利用時に再試行します。権限不足・送信失敗時はクレジット表示を保証できないため、通知先の閲覧・送信権限と警告ログを確認してください。`/credits` で、このサーバーの利用可能な全キャラのクレジットと規約 URL を公開表示できます。
+```dotenv
+DISCORD_TOKEN=発行したBotトークン
+DISCORD_CLIENT_ID=Application_ID
+DISCORD_DEV_GUILD_ID=利用するサーバーID
+```
 
-Bot・システム投稿と `;` で始まる投稿は除外します。`READ_SKIP_PREFIX` で接頭辞を変更できます（未設定なら `;`、空文字なら除外なし）。URL・コードブロック・伏せ字を省略し、メンションは表示名、カスタム絵文字は名前に置換します。Unicode 絵文字はそのまま保持し、連続する `w` / `ｗ` は「わらわら」にまとめます。添付だけなら「添付ファイル」と読みます。
+サーバー ID は Discord の設定で開発者モードを有効にしてサーバーを右クリック → ID をコピーで取得できます。`DISCORD_DEV_GUILD_ID` を空にすると全導入先向けのグローバルコマンド登録になります。初回はサーバー指定が確認しやすいです。
 
-`READ_MAX_LENGTH` は既定 100 文字で、超過時に「以下略」を追加します。`MAX_QUEUE_LENGTH` は再生中を除く未再生発話の上限（既定 20）です。満杯なら新しい発話を警告ログ付きで拒否します。最大 2 件を先読み合成し、再生は FIFO、合成・再生に失敗した発話だけをスキップします。
+```sh
+# イメージをビルド（Node.js のホストへのインストールは不要）
+docker compose build bot
+# Discord にコマンドを登録（初回・コマンド定義の更新時）
+docker compose run --rm --no-deps bot npm run deploy-commands:prod
+# Bot と CPU 版 ENGINE の両方を常駐起動
+docker compose up -d --build
+docker compose logs -f bot
+```
 
-音声は VOICEVOX に 48 kHz・ステレオを要求し、PCM 16-bit WAV の data チャンクを検証・抽出して直接 Opus に変換します。FFmpeg は不要です。DAVE は `@discordjs/voice` 同梱の `@snazzah/davey`、Opus は Windows / Node 24 で導入できる `opusscript` を使用します。
+**従来 ENGINE だけを動かしていた人も、引数なしの `docker compose up -d` は今後両方を起動します。** ローカル開発で ENGINE だけを使う場合は `docker compose up -d voicevox` としてください。
 
-## ユーザー別音声
+Compose 内の ENGINE 接続先は `http://voicevox:50021` に固定しています。ENGINE 起動中でも Bot は稼働を続けます。合成に失敗した場合は ENGINE の起動完了後に再度投稿してください。公式イメージの runtime に curl・Python があるとは限らないため healthcheck は設定せず、`depends_on: service_started` を使用します（[公式 Dockerfile](https://github.com/VOICEVOX/voicevox_engine/blob/master/Dockerfile)）。
 
-`/voice set <speaker>` の候補からキャラ・スタイルを選びます。`/voice show` で現在の話者・話速・ピッチと既定話者の利用状態を確認できます。`/voice speed <value>` は 0.5〜2.0、`/voice pitch <value>` は -0.15〜0.15。`/voice reset` で自分の設定を削除し、`/voice list` で利用可能なキャラ・スタイルを確認します。すべて非公開返信です。
+DB は `./data:/app/data` に永続化します。`DATABASE_PATH` は空（既定 `data/kosuzu.db`）か `/app/data/kosuzu.db` にします。Linux の既存 bind mount はコンテナ内の `node`（UID/GID 1000）が書き込める必要があります。権限エラー時は Bot を止め、ホストで `sudo mkdir -p data` と `sudo chown -R 1000:1000 data` を実行します。Docker Desktop では通常この作業は不要です。
 
-初期の主要キャラは四国めたん、ずんだもん、春日部つむぎ、雨晴はう、波音リツ、玄野武宏、白上虎太郎、青山龍星、冥鳴ひまり、九州そら。ENGINE に存在する話者だけを表示します。ユーザー未設定・利用不可時はサーバー既定 → `DEFAULT_STYLE_ID` の順に解決します。速度・ピッチだけの設定では既定話者に追従します。設定の既定話者も利用不可なら、その発話をログ付きで処理失敗とします。
+```sh
+# ENGINE と合成の確認。data/smoke.wav に保存
+docker compose exec bot npm run voicevox:smoke:prod -- 3
+# 停止（設定データは残る）
+docker compose down
+```
 
-## データの保存
+GPU 版の任意設定、更新・バックアップ・ログの管理は [運用ガイド](docs/OPERATIONS.md) を参照してください。
 
-`DATABASE_PATH`（既定 `data/kosuzu.db`）に SQLite DB を作成し、ユーザー設定・サーバー既定・最後の `/join` 実行チャンネル・追加話者の有効化を保存します。`data/` はバックアップしてください。WAL 使用中は DB 本体だけのコピーを避け、Bot 停止後にコピーするか SQLite のバックアップ機能を使います。正常終了時に DB を閉じます。Node.js 24.22.0 では `node:sqlite` の ExperimentalWarning は発生しません。
+## Docker を使わずに導入する
 
-## 自動入退室とサーバー設定
+Node.js 24 LTS をインストールし、リポジトリ直下を作業ディレクトリにします。
 
-既定では、無人の通常 VC に最初の人間が入ると自動参加します。起動時にも既存 VC をスキャンします。AFK・ステージ・除外 VC・Bot に接続/発言権限のない VC は対象外です。Bot の人数は数えません。接続中は別 VC に人が入っても移動しません。
+```sh
+npm ci
+cp .env.example .env
+```
 
-手動・自動接続とも、無人になってから `AUTO_LEAVE_GRACE_MS`（既定 10000ms）後に退出し、途中で人が戻れば取消します。退出後に別 VC が継続中なら、人間の人数が多い順 → チャンネル位置 → ID の辞書順で参加先を選びます。Bot を移動すると VC チャットの読み上げも追従し、追加のテキスト対象は保持します。キック時はセッションを破棄し、その場では自動再参加しません。
+Discord の値を前節と同じように設定します。VOICEVOX デスクトップ版か ENGINE を起動してください。既定の `VOICEVOX_URL` は `http://127.0.0.1:50021` です。ENGINE だけ Docker で起動する場合は `docker compose up -d voicevox` を使います。
 
-自動参加では VC チャットと固定チャンネル（未設定なら最後の `/join` 実行チャンネル）を読みます。追加先は現在も閲覧・送信可能な場合に限ります。VC 内蔵チャットへ接続とキャラクター一覧を公開投稿し、送信できない場合は読み上げ対象の追加先を通知先にします。どちらも使えなければ警告ログを残します。接続失敗はログに残し、繰り返し再試行せず次の開始イベントを待ちます。
+本番運用では `.env` の `NODE_ENV=production` も設定します。JSON ログになり、開発用のログ整形依存は使いません。
 
-「サーバー管理」権限を持つメンバーは、非公開返信の次のコマンドを使えます。
+```sh
+npm run build
+npm run voicevox:smoke:prod -- 3
+npm run deploy-commands:prod
+npm start
+```
 
-- `/config autojoin enabled:<boolean>`: 自動参加の有効/無効。
-- `/config exclude channel:<voice>` / `/config include channel:<voice>`: 自動参加の除外を追加/解除。
-- `/config show`: 自動参加・除外 VC・最後の `/join`・サーバー既定話者を表示。
-- `/config default-voice speaker:<speaker>`: 候補からサーバー既定話者を選択。
-- `/config default-voice-reset`: サーバー既定話者を解除して `DEFAULT_STYLE_ID` に戻す。
-- `/config channel set channel:<text>` / `channel reset`: 固定チャンネルを設定・解除。自動参加では最後の `/join` の代わりに使い、手動 `/join` では実行先と VC チャットに加えます。
-- `/config max-length value:<10〜500>` / `max-length-reset`: 本文の上限を変更・環境設定に戻す。
-- `/config skip-prefix value:<0〜5文字>` / `skip-prefix-reset`: 除外接頭辞を変更・環境設定に戻す。値の省略または空文字で無効。
-- `/config announce enabled:<boolean>`: 接続音声を切り替えます。クレジットの公開投稿は常に行います。
-- `/config read-name mode:<off|on_change>`: 発話者が変わった時だけ表示名を読みます。名前は本文の文字数上限に含めません。
-- `/config dict-permission mode:<everyone|admin>`: 辞書の変更権限を設定します。一覧は誰でも見られます。
+`npm start` はビルド済みの `dist/index.js` を起動します。自動ビルドは行いません。ビルド後は必要に応じ `npm prune --omit=dev` で開発依存を削除しても、本番起動・コマンド登録・合成確認は実行できます。次回ビルドの前に `npm ci` で開発依存を戻します（`NODE_ENV=production` の環境では `npm ci --include=dev`）。
 
-`/dict add surface:<表記> reading:<読み>` で登録し、同じ表記は上書きします。`/dict remove surface:<表記>` は候補から削除、`/dict list` は非公開で一覧を表示します。変更結果は公開されます。表記は1〜50文字、読みは1〜100文字、各サーバー最大500件です。表記は NFKC と ASCII 小文字で照合し、長い表記を優先して一度だけ置換します。URL 等の省略を示す文字列も辞書の対象です。
+開発時は `npm run dev`、`npm run deploy-commands`、`npm run voicevox:smoke -- 3`（tsx）を利用できます。`.env` と相対パスの `DATABASE_PATH`、`data/smoke.wav` はすべて**作業ディレクトリ基準**です。ソース版・ビルド版ともリポジトリ直下から実行します。Compose は `/app`、付属の pm2・systemd・Windows の設定例も作業ディレクトリを固定します。
 
-設定は SQLite に保存します。自動参加・除外の変更は次回判定から適用し、現在の接続は維持します。自動参加が無効でも無人時の退出は行います。有効化直後のスキャンは行わず、次の開始イベントまたは再起動から自動参加します。更新後は `npm run deploy-commands` で `/config` を登録してください。
+常駐の設定は [運用ガイド](docs/OPERATIONS.md) の pm2 / systemd / Windows を参照してください。
 
-## キャラの追加とクレジット
+## 使い方
 
-「サーバー管理」権限を持つメンバーは `/speaker install speaker:<候補>` で追加キャラを選べます。公式 ENGINE 0.26.0 ではモデルのダウンロードではなく、エンジン同梱キャラのサーバー単位の有効化です。
+VC に参加して読み上げたいテキストチャンネルで `/join` を実行します。実行先と VC 内蔵チャット、設定済みの固定先を読みます。同じ VC での再実行は読み上げ先を更新し、別 VC なら移動します。`/skip` で発話を飛ばし、`/leave` で退出します。
 
-非公開の確認画面でクレジット・規約抜粋・規約 URL を確認し、60秒以内に「規約を確認してインストール」を押してください。操作できるのは実行者だけです。有効化後は公開通知され、全員が `/voice set` で選択できます。事前ロードに一部失敗した場合は管理者にスタイル ID を表示します。有効化は続行し、利用時にエンジンが再ロードします。
+自動参加は既定で有効です。通常 VC に最初の人間が入ると参加し、起動時も利用中の VC をスキャンします。AFK・ステージ・除外 VC・権限のない VC は対象外です。接続中は別 VC に移動せず、無人になって既定10秒後に退出します。自動参加では VC チャットと固定先（なければ最後の `/join` 実行先）を読みます。
 
-`/speaker uninstall speaker:<候補>` はサーバーの有効化を解除し、公開通知します。標準10キャラは解除できません。利用不可となった保存話者は自動的に既定話者へ戻ります。`/speaker list` で標準・導入済みキャラ（導入者・日時）と追加可能数を非公開で確認できます。
+Bot・システム投稿を除外し、既定では `;` で始まる投稿も除外します。URL・コードブロック・伏せ字を省略し、メンションは表示名、カスタム絵文字は名前に置換します。Unicode 絵文字は保持します。本文は既定100文字、超過時に「以下略」を追加します。未再生キュー上限は20件で、満杯なら新着を拒否しログに残します。
 
-`/credits` は誰でも実行でき、VOICEVOX とサーバーで選択可能なキャラのクレジット・取得できた規約 URL を公開します。各キャラクターの利用規約に従ってください。Bot に Embed Links（埋め込みリンク）権限も付与してください。
+## コマンド一覧
 
-ライブラリ管理に対応する別エンジンでは、未導入ライブラリも候補へ表示します。規約メタデータがない場合は表示される配布元で規約を確認してください。ZIP 取得は60秒・256 MiBまでです。公式 ENGINE ではこの経路は使いません。変更後は `npm run deploy-commands` で `/speaker` と `/credits` を登録してください。
+全操作はスラッシュコマンドです。「管理」は実行者に「サーバー管理」権限が必要です。
+
+| コマンド                                                               | 対象  | 内容                                                 |
+| ---------------------------------------------------------------------- | ----- | ---------------------------------------------------- |
+| `/ping`                                                                | 全員  | Bot の応答確認                                       |
+| `/join`                                                                | 全員  | 実行者の VC に参加し読み上げ先を設定                 |
+| `/leave`                                                               | 全員  | 退出                                                 |
+| `/skip`                                                                | 全員  | 再生中の発話をスキップ                               |
+| `/voice set speaker:<候補>`                                            | 全員  | 自分のキャラ・スタイルを設定                         |
+| `/voice show`                                                          | 全員  | 現在の話者・話速・ピッチを表示                       |
+| `/voice speed value:<0.5〜2.0>`                                        | 全員  | 自分の話速を設定                                     |
+| `/voice pitch value:<-0.15〜0.15>`                                     | 全員  | 自分のピッチを設定                                   |
+| `/voice reset`                                                         | 全員  | 自分の音声設定を削除                                 |
+| `/voice list`                                                          | 全員  | 利用可能なキャラ・スタイル一覧                       |
+| `/dict add surface:<表記> reading:<読み>`                              | 全員※ | 登録・同じ表記の上書き                               |
+| `/dict remove surface:<候補>`                                          | 全員※ | 辞書から削除                                         |
+| `/dict list`                                                           | 全員  | 辞書一覧                                             |
+| `/config show`                                                         | 管理  | サーバー設定・環境設定の実効値                       |
+| `/config autojoin enabled:<boolean>`                                   | 管理  | 自動参加の切り替え                                   |
+| `/config exclude channel:<VC>` / `/config include channel:<VC>`        | 管理  | 自動参加の除外・解除                                 |
+| `/config channel set channel:<text>` / `/config channel reset`         | 管理  | 固定読み上げ先の設定・解除                           |
+| `/config default-voice speaker:<候補>` / `/config default-voice-reset` | 管理  | サーバー既定話者の設定・解除                         |
+| `/config max-length value:<10〜500>` / `/config max-length-reset`      | 管理  | 本文上限の設定・環境設定への復帰                     |
+| `/config skip-prefix value:<最大5文字>` / `/config skip-prefix-reset`  | 管理  | 除外接頭辞の設定・環境設定への復帰。値省略で除外なし |
+| `/config announce enabled:<boolean>`                                   | 管理  | 接続音声の切り替え。クレジット投稿は継続             |
+| `/config read-name mode:<off/on_change>`                               | 管理  | 発話者が変わったときの名前読み                       |
+| `/config dict-permission mode:<everyone/admin>`                        | 管理  | 辞書変更権限の切り替え                               |
+| `/speaker install speaker:<候補>`                                      | 管理  | 規約確認後にキャラを有効化                           |
+| `/speaker uninstall speaker:<候補>`                                    | 管理  | 追加キャラを無効化                                   |
+| `/speaker list`                                                        | 管理  | 標準・導入済み・追加可能数の一覧                     |
+| `/credits`                                                             | 全員  | 利用可能な全キャラのクレジット・規約を公開           |
+
+※ 辞書変更は `/config dict-permission mode:admin` で管理者に制限できます。表記1〜50文字、読み1〜100文字、サーバーごとに最大500件。NFKC と ASCII 小文字で照合し、長い表記から一度だけ置換します。
+
+`/voice`・`/config`・各一覧は非公開返信、入退室・スキップ・辞書変更・クレジットは公開です。追加キャラは非公開画面で60秒以内に規約を確認して確定すると公開通知されます。
+
+## 設定とクレジット
+
+`.env.example` に全環境変数を列挙しています。代表的な既定値は `LOG_LEVEL=info`、`DEFAULT_STYLE_ID=3`（ずんだもん）、`READ_MAX_LENGTH=100`、`MAX_QUEUE_LENGTH=20`、`AUTO_LEAVE_GRACE_MS=10000`、`VOICEVOX_TIMEOUT_MS=15000` です。`READ_SKIP_PREFIX` は未設定なら `;`、空なら除外なしです。設定ファイル例の空欄も必要に応じて編集してください。
+
+話者はユーザー設定 → サーバー既定 → 環境既定の順で解決します。初期の主要キャラは四国めたん、ずんだもん、春日部つむぎ、雨晴はう、波音リツ、玄野武宏、白上虎太郎、青山龍星、冥鳴ひまり、九州そら。ENGINE に存在するものだけを選べます。公式 ENGINE の `/speaker install` は同梱キャラのサーバー単位の有効化です。標準10キャラは解除できません。
+
+[VOICEVOX の利用規約](https://voicevox.hiroshiba.jp/term/)と各キャラクターの規約に従い、**VOICEVOX:キャラ名** のクレジットを表記してください。Bot は接続時とセッション内で新たなキャラを使う際に公開投稿し、`/credits` でも一覧を表示します。投稿失敗時も読み上げを継続するため、運用者は通知先の閲覧・送信権限と warn ログを確認してください。生成音声を録音・公開する場合にも必要な表記を行います。
+
+バックアップ、更新、ログ、音が出ない場合の確認方法は [docs/OPERATIONS.md](docs/OPERATIONS.md)、設計は [docs/PLAN.md](docs/PLAN.md) にあります。

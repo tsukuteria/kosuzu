@@ -77,6 +77,28 @@ const flush = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 describe('VoiceSessionManager', () => {
+  it('終了時は待機中と遅れて到着する join を拒否し、接続を再作成しない', async () => {
+    const s = setup();
+    let finish!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const targets = vi.spyOn(s.manager, 'readTargets').mockImplementationOnce(async () => {
+      await waiting;
+      return new Set(['vc']);
+    });
+    const onShutdown = vi.fn();
+    s.manager.onShutdown.add(onShutdown);
+    const pending = s.manager.join(s.channel(), 'text');
+    s.manager.destroyAll();
+    s.manager.destroyAll();
+    finish();
+    await expect(pending).rejects.toThrow('終了処理中');
+    await expect(s.manager.join(s.channel(), 'text')).rejects.toThrow('終了処理中');
+    expect(targets).toHaveBeenCalledTimes(1);
+    expect(joinVoiceChannel).not.toHaveBeenCalled();
+    expect(onShutdown).toHaveBeenCalledTimes(1);
+  });
   it('自動接続で公開通知し、手動移動・外部移動では集合を引き継ぎ退出後は初期化する', async () => {
     const style = {
       styleId: 3,
@@ -265,12 +287,10 @@ describe('VoiceSessionManager', () => {
       store.setLastTextChannel('guild', 'last');
       store.setGuildOption('guild', 'fixed_text_channel_id', 'fixed');
       const manager = new VoiceSessionManager(s.engine, s.logger as unknown as Logger, 20, store);
-      const fetch = vi
-        .fn()
-        .mockResolvedValue({
-          isTextBased: () => true,
-          permissionsFor: () => ({ has: () => true }),
-        });
+      const fetch = vi.fn().mockResolvedValue({
+        isTextBased: () => true,
+        permissionsFor: () => ({ has: () => true }),
+      });
       const channel = {
         id: 'vc',
         guild: { id: 'guild', members: { me: {} }, channels: { fetch } },

@@ -123,6 +123,10 @@ export class AutoJoin {
     this.guilds.clear();
   }
 
+  async drain(): Promise<void> {
+    await Promise.allSettled(this.pending.values());
+  }
+
   private enabled(guild: Guild): boolean {
     return this.store.guild(guild.id)?.autojoin ?? true;
   }

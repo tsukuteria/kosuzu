@@ -133,11 +133,16 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 
 ### 4.6 運用（R2）
 
-- `npm start` でフォアグラウンド常駐、`docker compose up -d` で Bot + VOICEVOX ENGINE をまとめて常駐。
+- `npm run build` 後、`npm start` でフォアグラウンド常駐。自動ビルドは行わず、開発依存なしで起動する。本番用エントリは `dist/index.js`、ソースは `dist/src/`、補助スクリプトは `dist/scripts/` に出力。
+- `deploy-commands:prod` / `voicevox:smoke:prod` はビルド済みスクリプトを実行する。登録の `--dry-run` はトークン・Discord 通信なしで全定義を検証する。開発用の tsx コマンドも維持。
+- `.env` と相対データパスは作業ディレクトリ基準。非 Docker はリポジトリ直下、Docker は `/app` で実行する。
+- `docker compose up -d --build` で Bot + CPU 版 ENGINE をまとめて常駐。ENGINE だけなら `docker compose up -d voicevox`。Node 24.22 系 Bookworm slim の多段ビルド、production 依存のみ・非 root `node`、`./data:/app/data` 永続化、`init: true`、停止猶予15秒。DAVE の GNU optional 依存と Opus を runtime stage でロード検証する。FFmpeg 不要。
+- ENGINE イメージ内の curl / Python を保証できないため healthcheck は設けず `service_started` で依存する。ENGINE 未準備でも Bot は稼働する。
 - Gateway / Voice の切断は discord.js の自動再接続に任せ、Voice は `Disconnected` 状態で再接続を試み、失敗時はセッション破棄。
-- VOICEVOX ENGINE 未起動・応答なしの場合はリトライし、ログに警告。Bot 自体は落とさない。
+- VOICEVOX ENGINE 未起動・応答なしはログに警告し Bot 自体は落とさない。GET の通信失敗のみ最大2回再試行し、POST は再試行しない。復旧後の投稿から再開する。
 - 未捕捉例外はログ出力して終了 → プロセスマネージャーが再起動。
-- `SIGINT` / `SIGTERM` で VC から退出してから終了（グレースフルシャットダウン）。
+- `SIGINT` / `SIGTERM` は重複実行を抑止し、新規イベント・collector 処理を停止。セッション・自動参加タイマーを破棄し、実行中の DB 利用（コマンド・collector・自動判定）を待つ。Discord クライアント破棄後に DB を一度だけ閉じ、ログを flush して終了する。通信待ち等で10秒を超える場合はエラー終了、flush が停止しても12秒で強制終了。ログイン失敗も同じ終了経路を使う。
+- production は JSON を stdout へ出力し `LOG_LEVEL` で調整。pm2 / systemd / Windows の常駐、WAL バックアップ・復元、更新・障害切り分けは [OPERATIONS.md](OPERATIONS.md) に記載。
 - GPU 版エンジンの利用は任意（CPU 版で個人規模は十分）。
 
 ### 4.7 必要な Discord 設定
@@ -146,7 +151,7 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 - Intents: `Guilds`, `GuildVoiceStates`, `GuildMessages`, `MessageContent`
 - Developer Portal の「Installation」で Guild Install を有効にし、スコープに `bot`, `applications.commands` を設定（User Install は無効でも可）
 - 招待スコープ: `bot`, `applications.commands`
-- Bot 権限: View Channels, Send Messages, Read Message History, Connect, Speak, Use Voice Activity
+- Bot 権限: View Channels, Send Messages, Read Message History, Connect, Speak, Use Voice Activity（整数値 36768768）。一覧・クレジットの Embed Links を加えた推奨値は 36785152。
 
 ### 4.8 音声利用時のクレジット表示
 
@@ -170,7 +175,7 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 | M5 | 自動入退室 | `voiceStateUpdate` 追跡、起動時スキャン、`/config autojoin` |
 | M6 | キャラのインストール（実装済み） | `/speaker install/uninstall/list`、`/credits` |
 | M7 | 辞書・サーバー設定（実装済み） | `/dict`、`/config` 一式 |
-| M8 | 運用整備 | Dockerfile / compose、README の導入手順、グレースフルシャットダウン |
+| M8 | 運用整備（実装済み） | 本番用スクリプト、多段 Dockerfile / Compose、README 導入手順、OPERATIONS.md と常駐設定例、DB 利用完了を待つ上限付きシャットダウン |
 
 ## 6. リスク・留意点
 

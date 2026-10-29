@@ -4,13 +4,14 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.build.json",
-    "prestart": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
     "deploy-commands": "tsx scripts/deploy-commands.ts",
-    "voicevox:smoke": "tsx scripts/voicevox-smoke.ts"
+    "deploy-commands:prod": "node dist/scripts/deploy-commands.js",
+    "voicevox:smoke": "tsx scripts/voicevox-smoke.ts",
+    "voicevox:smoke:prod": "node dist/scripts/voicevox-smoke.js"
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",

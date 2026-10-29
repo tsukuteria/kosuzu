@@ -1,0 +1,23 @@
+node_modules
+dist
+data
+.env*
+.git
+.github
+.agents
+.codex
+.aws
+.claude
+.npm-cache
+coverage
+logs
+**/*.log
+**/*.db
+**/*.db-*
+**/*.sqlite*
+docs
+README.md
+AGENTS.md
+.vscode
+.idea
+# tests は npm run build の型チェックに必要なので除外しない。

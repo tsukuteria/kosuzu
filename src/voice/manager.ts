@@ -21,7 +21,7 @@ export const JOIN_ANNOUNCEMENT = '接続しました';
 export class VoiceSessionManager {
   private readonly sessions = new Map<string, GuildVoiceSession>();
   private readonly pending = new Map<string, Promise<GuildVoiceSession>>();
-  private generation = 0;
+  private stopped = false;
   readonly onChange = new Set<(guildId: string) => void>();
   readonly onShutdown = new Set<() => void>();
 
@@ -88,14 +88,13 @@ export class VoiceSessionManager {
     textChannelId: string | 'auto',
   ): Promise<GuildVoiceSession> {
     const prior = this.pending.get(channel.guild.id);
-    const generation = this.generation;
     const operation = (async () => {
       if (prior) await prior.catch(() => {});
-      if (generation !== this.generation) throw new Error('終了処理中です');
+      if (this.stopped) throw new Error('終了処理中です');
       if (textChannelId === 'auto' && this.get(channel.guild.id))
         return this.get(channel.guild.id)!;
       const targets = await this.readTargets(channel, textChannelId);
-      if (generation !== this.generation) throw new Error('終了処理中です');
+      if (this.stopped) throw new Error('終了処理中です');
       const existing = this.get(channel.guild.id);
       if (existing?.channelId === channel.id) {
         existing.setReadChannels(targets);
@@ -126,7 +125,7 @@ export class VoiceSessionManager {
             return destination.send(content);
           });
       }
-      if (generation !== this.generation) throw new Error('終了処理中です');
+      if (this.stopped) throw new Error('終了処理中です');
       this.leave(channel.guild.id);
       const connection = joinVoiceChannel({
         channelId: channel.id,
@@ -224,7 +223,8 @@ export class VoiceSessionManager {
   }
 
   destroyAll(): void {
-    this.generation++;
+    if (this.stopped) return;
+    this.stopped = true;
     for (const listener of this.onShutdown) listener();
     for (const session of this.sessions.values()) session.destroy();
   }

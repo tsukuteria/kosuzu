@@ -4,3 +4,18 @@ services:
     ports:
       - '127.0.0.1:50021:50021'
     restart: unless-stopped
+    # 公式 runtime は curl / Python の存在を保証しないため healthcheck は付けない。
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      VOICEVOX_URL: http://voicevox:50021
+      NODE_ENV: production
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    depends_on:
+      voicevox:
+        condition: service_started

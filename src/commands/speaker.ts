@@ -221,7 +221,7 @@ export const speaker: Command = {
         .catch((err: unknown) => context.logger.warn({ err }, '確認画面を更新できませんでした'));
     };
     collector.on('collect', (button) => {
-      void (async () => {
+      const install = async () => {
         if (button.user.id !== interaction.user.id) {
           await button.reply({
             content: '実行した管理者だけが操作できます',
@@ -285,7 +285,8 @@ export const speaker: Command = {
           components: [buttons(true)],
           allowedMentions: { parse: [] },
         });
-      })().catch(fail);
+      };
+      void (context.lifecycle ? context.lifecycle.run(install) : install()).catch(fail);
     });
     collector.on('end', () => {
       if (handled) return;

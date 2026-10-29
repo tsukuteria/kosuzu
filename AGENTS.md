@@ -41,15 +41,23 @@ M6: `commands/speaker.ts` がギルド別有効化と規約確認 collector、`c
 
 M7: `commands/dict.ts` が辞書操作、`tts/dictionary.ts` が読み替えを担当し、`store/settings.ts` が辞書とサーバー設定を管理する。
 
+M8: `index.ts` は本番用エントリで、ビルドは `dist/index.js`・`dist/src/`・`dist/scripts/` を生成する。`.env`・相対データパスは作業ディレクトリ基準。`src/lifecycle.ts` が新規処理の停止と実行中処理の待機を担当し、collector の非同期 DB 利用も追跡する。Docker Compose と非 Docker の常駐・更新・バックアップ手順は [docs/OPERATIONS.md](docs/OPERATIONS.md)。
+
 ## コマンド（M1 以降で整備）
 
 - `npm install` 依存関係のインストール
 - `npm run dev` 開発起動（ファイル監視）
-- `npm start` 本番起動
+- `npm start` ビルド済み成果物の本番起動（自動ビルドなし）
 - `npm run build` 型チェック・ビルド
 - `npm test` テスト
 - `npm run lint` Lint
 - `npm run deploy-commands` スラッシュコマンドの登録
+- `npm run deploy-commands:prod` ビルド済みスクリプトで登録（開発依存不要）
+- `npm run deploy-commands:prod -- --dry-run` Discord 通信・トークンなしで定義検証
+- `npm run voicevox:smoke` ENGINE の合成確認（開発用）
+- `npm run voicevox:smoke:prod` ビルド済みスクリプトで合成確認
+- `docker compose up -d --build` Bot と ENGINE を常駐起動
+- `docker compose up -d voicevox` ローカル開発用に ENGINE だけ起動
 
 変更を加えたら、コミット前に `npm run build`・`npm run lint`・`npm test` が通ることを確認する。
 

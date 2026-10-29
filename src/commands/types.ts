@@ -5,8 +5,10 @@ import type { SpeakerCatalog } from '../tts/speakers.js';
 import type { ResolvedVoice } from '../voice/resolver.js';
 import type { TtsEngine } from '../tts/voicevox.js';
 import type { Logger } from 'pino';
+import type { RuntimeLifecycle } from '../lifecycle.js';
 
 export interface CommandContext {
+  lifecycle?: Pick<RuntimeLifecycle, 'run'>;
   readDefaults?: { readMaxLength: number; readSkipPrefix: string };
   engine: TtsEngine;
   logger: Pick<Logger, 'warn'>;
