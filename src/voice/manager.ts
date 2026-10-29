@@ -14,6 +14,7 @@ import type { Logger } from 'pino';
 import type { TtsEngine } from '../tts/voicevox.js';
 import { wavToPcm } from '../tts/wav.js';
 import { GuildVoiceSession } from './session.js';
+import { prepareAutoCredits, SessionCredits, type CreditOptions } from './credits.js';
 
 export const JOIN_ANNOUNCEMENT = '接続しました';
 
@@ -47,6 +48,7 @@ export class VoiceSessionManager {
     private readonly logger: Logger,
     private readonly maxQueueLength: number,
     private readonly store?: Pick<SettingsStore, 'guild'>,
+    private readonly creditOptions?: CreditOptions,
   ) {}
 
   get(guildId: string): GuildVoiceSession | undefined {
@@ -96,6 +98,31 @@ export class VoiceSessionManager {
         existing.setReadChannels(targets);
         return existing;
       }
+      const credits = this.creditOptions
+        ? (existing?.credits ??
+          new SessionCredits(
+            (id) => this.creditOptions!.catalog.find(channel.guild.id, id),
+            this.logger,
+          ))
+        : undefined;
+      if (credits && this.creditOptions) await credits.prepare(channel, this.creditOptions);
+      // セッション公開前に通知先を確定し、接続返信前に届く発話も通知できるようにする。
+      if (credits) {
+        if (textChannelId === 'auto')
+          await prepareAutoCredits(
+            channel,
+            { credits, readsChannel: (id) => targets.has(id) },
+            this.store?.guild(channel.guild.id)?.lastTextChannelId,
+            this.logger,
+          );
+        else
+          credits.setDestination(textChannelId, async (content) => {
+            const destination = await channel.guild.channels.fetch(textChannelId);
+            if (!destination?.isSendable()) throw new Error('クレジットの送信先がありません');
+            return destination.send(content);
+          });
+      }
+      if (generation !== this.generation) throw new Error('終了処理中です');
       this.leave(channel.guild.id);
       const connection = joinVoiceChannel({
         channelId: channel.id,
@@ -125,10 +152,11 @@ export class VoiceSessionManager {
             if (connection.state.status !== VoiceConnectionStatus.Destroyed) connection.destroy();
           },
         },
-        async ({ text, styleId, ...overrides }) =>
+        async ({ text, styleId, speedScale, pitchScale }) =>
           wavToPcm(
             await this.engine.synthesize(text, styleId, {
-              ...overrides,
+              ...(speedScale === undefined ? {} : { speedScale }),
+              ...(pitchScale === undefined ? {} : { pitchScale }),
               outputSamplingRate: 48000,
               outputStereo: true,
             }),
@@ -139,6 +167,7 @@ export class VoiceSessionManager {
           if (this.get(channel.guild.id) === session) this.sessions.delete(channel.guild.id);
           for (const listener of this.onChange) listener(channel.guild.id);
         },
+        credits,
       );
       this.sessions.set(channel.guild.id, session);
       connection.subscribe(player);
@@ -170,6 +199,7 @@ export class VoiceSessionManager {
       }
       if (this.get(channel.guild.id) !== session) throw new Error('音声接続が切断されました');
       for (const listener of this.onChange) listener(channel.guild.id);
+      if (textChannelId === 'auto' && credits) void credits.announceCurrent('接続しました。');
       return session;
     })();
     this.pending.set(channel.guild.id, operation);

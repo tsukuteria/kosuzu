@@ -1,10 +1,12 @@
 import type { Logger } from 'pino';
+import type { Character, SessionCredits } from './credits.js';
 
 export interface Utterance {
   text: string;
   styleId: number;
   speedScale?: number;
   pitchScale?: number;
+  character?: Character;
 }
 export interface SessionPlayer {
   play(pcm: Buffer): void;
@@ -14,6 +16,7 @@ export interface SessionPlayer {
 }
 interface Item {
   utterance: Utterance;
+  credit?: Promise<void>;
   started?: boolean;
   ready?: boolean;
   pcm?: Buffer;
@@ -35,6 +38,7 @@ export class GuildVoiceSession {
     private readonly maxQueueLength: number,
     private readonly logger: Pick<Logger, 'warn'>,
     private readonly onDestroy: () => void = () => {},
+    public readonly credits?: SessionCredits,
   ) {
     this.setReadChannels(textChannelIds);
     player.onIdle(() => {
@@ -67,7 +71,8 @@ export class GuildVoiceSession {
       this.logger.warn('読み上げキューが満杯のため新しい発話を破棄します');
       return false;
     }
-    this.queue.push({ utterance });
+    const credit = this.credits?.use(utterance);
+    this.queue.push({ utterance, credit });
     this.pump();
     return true;
   }
@@ -111,6 +116,7 @@ export class GuildVoiceSession {
       item.started = true;
       this.synthesizing++;
       void Promise.resolve()
+        .then(() => item.credit)
         .then(() => this.synthesize(item.utterance))
         .then(
           (pcm) => {

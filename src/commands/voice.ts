@@ -13,7 +13,7 @@ export function voiceListEmbeds(labels: string[]): EmbedBuilder[] {
     new EmbedBuilder()
       .setTitle('利用可能な話者')
       .setDescription(description)
-      .setFooter({ text: '利用時は「VOICEVOX:キャラ名」のクレジットを表記してください' }),
+      .setFooter({ text: 'Bot は接続時・追加利用時に「VOICEVOX:キャラ名」を公開表示します' }),
   );
 }
 

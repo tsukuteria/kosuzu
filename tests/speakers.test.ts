@@ -44,11 +44,16 @@ describe('SpeakerCatalog / resolver', () => {
   it('ユーザー→サーバー→設定の順に解決し、無効な保存話者を記録する', async () => {
     const logger = { debug: vi.fn() };
     const resolve = createVoiceResolver(store, new SpeakerCatalog(engine, store), 3, logger);
-    expect(await resolve('g', 'u')).toEqual({ styleId: 3, speedScale: 1, pitchScale: 0 });
+    expect(await resolve('g', 'u')).toEqual({
+      styleId: 3,
+      speedScale: 1,
+      pitchScale: 0,
+      character: { speakerUuid: MAIN_SPEAKER_UUIDS[0], speakerName: '四国めたん' },
+    });
     store.setDefaultStyle('g', 8);
     expect((await resolve('g', 'u')).styleId).toBe(8);
     store.setUser('g', 'u', { styleId: 3, speed: 1.5, pitch: 0.1 });
-    expect(await resolve('g', 'u')).toEqual({ styleId: 3, speedScale: 1.5, pitchScale: 0.1 });
+    expect(await resolve('g', 'u')).toMatchObject({ styleId: 3, speedScale: 1.5, pitchScale: 0.1 });
     store.setUser('g', 'u', { styleId: 9, speed: 1.5, pitch: 0.1 });
     expect((await resolve('g', 'u')).styleId).toBe(8);
     store.setDefaultStyle('g', 999);

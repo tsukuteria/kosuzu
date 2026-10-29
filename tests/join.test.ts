@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from '../src/commands/join.js';
 import type { CommandContext } from '../src/commands/types.js';
 import type { GuildVoiceSession } from '../src/voice/session.js';
+import { SessionCredits } from '../src/voice/credits.js';
 
 const databases: ReturnType<typeof openDatabase>[] = [];
 afterEach(() => databases.splice(0).forEach((db) => db.close()));
@@ -17,20 +18,31 @@ function createStore() {
 
 function setup() {
   const enqueue = vi.fn();
-  const connect = vi.fn().mockResolvedValue({ enqueue } as unknown as GuildVoiceSession);
+  const credits = new SessionCredits(async () => undefined, { warn: vi.fn() });
+  credits.characters = [{ speakerUuid: 'zunda', speakerName: 'ずんだもん' }];
+  const session = { enqueue, credits, channelId: 'vc' } as unknown as GuildVoiceSession;
+  const connect = vi.fn().mockResolvedValue(session);
   const context: CommandContext = {
     sessions: { join: connect, get: vi.fn(), leave: vi.fn() },
     store: createStore(),
     catalog: new SpeakerCatalog({ styles: async () => [] }, { enabledSpeakers: () => [] }),
     resolveVoice: async () => ({ styleId: 3, speedScale: 1, pitchScale: 0 }),
   };
-  const channel = { name: '雑談', permissionsFor: vi.fn(() => ({ has: (): boolean => true })) };
+  const channel = {
+    id: 'vc',
+    name: '雑談',
+    permissionsFor: vi.fn(() => ({ has: (): boolean => true })),
+  };
+  const send = vi.fn().mockResolvedValue(undefined);
   const interaction = {
     inCachedGuild: () => true,
     guildId: 'guild',
     channelId: 'text',
     user: { id: 'user' },
-    guild: { members: { me: {} } },
+    guild: {
+      members: { me: {} },
+      channels: { fetch: async () => ({ isSendable: () => true, send }) },
+    },
     member: { voice: { channel: channel as typeof channel | null } },
     reply: vi.fn().mockResolvedValue(undefined),
     deferReply: vi.fn().mockResolvedValue(undefined),
@@ -42,6 +54,9 @@ function setup() {
     connect,
     enqueue,
     context,
+    session,
+    credits,
+    send,
     run: () => join.execute(interaction as unknown as ChatInputCommandInteraction, context),
   };
 }
@@ -84,8 +99,22 @@ describe('/join', () => {
       pitchScale: 0,
     });
     expect(s.interaction.editReply).toHaveBeenCalledWith(
+      '雑談 に接続しました。このチャンネルを読み上げます\n現在設定されているキャラクター：VOICEVOX:ずんだもん',
+    );
+  });
+  it('同じ VC の対象更新では一覧と送信先を保ち、追加利用は新規投稿する', async () => {
+    const s = setup();
+    await s.run();
+    vi.mocked(s.context.sessions.get).mockReturnValue(s.session);
+    s.interaction.channelId = 'next';
+    await s.run();
+    expect(s.interaction.editReply).toHaveBeenLastCalledWith(
       '雑談 に接続しました。このチャンネルを読み上げます',
     );
+    expect(s.credits.announceChannelId).toBe('text');
+    s.credits.use({ styleId: 8, character: { speakerUuid: 'metan', speakerName: '四国めたん' } });
+    await Promise.resolve();
+    expect(s.send).toHaveBeenCalledWith('VOICEVOX:四国めたん を追加で使用します');
   });
   it('接続失敗は defer した返信にエラーを表示する', async () => {
     const s = setup();

@@ -32,12 +32,16 @@ const client = new Client({
 const db = openDatabase(config.databasePath);
 const store = new SqliteSettings(db);
 const catalog = new SpeakerCatalog(ttsEngine, store);
-const sessions = new VoiceSessionManager(ttsEngine, logger, config.maxQueueLength, store);
+const resolveVoice = createVoiceResolver(store, catalog, config.defaultStyleId, logger);
+const sessions = new VoiceSessionManager(ttsEngine, logger, config.maxQueueLength, store, {
+  catalog,
+  resolveVoice,
+});
 const context: CommandContext = {
   sessions,
   store,
   catalog,
-  resolveVoice: createVoiceResolver(store, catalog, config.defaultStyleId, logger),
+  resolveVoice,
 };
 client.on(Events.MessageCreate, (message) => handleMessage(message, context, config, logger));
 const resolveAnnouncement = createVoiceResolver(

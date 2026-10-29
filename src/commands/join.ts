@@ -35,6 +35,7 @@ export const join: Command = {
       return;
     }
     await interaction.deferReply();
+    const sameChannel = context.sessions.get(interaction.guildId)?.channelId === channel.id;
     let session;
     try {
       session = await context.sessions.join(channel, interaction.channelId);
@@ -42,7 +43,19 @@ export const join: Command = {
       await interaction.editReply('VC に接続できませんでした。権限や接続状態を確認してください');
       return;
     }
-    await interaction.editReply(`${channel.name} に接続しました。このチャンネルを読み上げます`);
+    const reply = `${channel.name} に接続しました。このチャンネルを読み上げます`;
+    if (session.credits && (!sameChannel || !session.credits.announceChannelId)) {
+      await session.credits.announce(
+        interaction.channelId,
+        async (content) => {
+          const destination = await interaction.guild.channels.fetch(interaction.channelId);
+          if (!destination?.isSendable()) throw new Error('クレジットの送信先がありません');
+          return destination.send(content);
+        },
+        reply,
+        async (content) => interaction.editReply(content),
+      );
+    } else await interaction.editReply(reply);
     session.enqueue({
       text: JOIN_ANNOUNCEMENT,
       ...(await context.resolveVoice(interaction.guildId, interaction.user.id)),

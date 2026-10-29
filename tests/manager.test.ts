@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VoiceBasedChannel } from 'discord.js';
 import type { Logger } from 'pino';
 import { VoiceSessionManager } from '../src/voice/manager.js';
+import type { CreditOptions } from '../src/voice/credits.js';
 import {
   entersState,
   joinVoiceChannel,
@@ -27,7 +28,7 @@ vi.mock('@discordjs/voice', () => ({
   createAudioResource: vi.fn(() => ({})),
   entersState: vi.fn(),
 }));
-function setup() {
+function setup(creditOptions?: CreditOptions) {
   const connections: ReturnType<typeof connection>[] = [];
   function connection() {
     const c = Object.assign(new EventEmitter(), {
@@ -52,16 +53,57 @@ function setup() {
   vi.mocked(entersState).mockResolvedValue({} as never);
   const engine = { synthesize: vi.fn().mockResolvedValue(Buffer.from('invalid')) };
   const logger = { warn: vi.fn() };
-  const manager = new VoiceSessionManager(engine, logger as unknown as Logger, 20);
+  const manager = new VoiceSessionManager(
+    engine,
+    logger as unknown as Logger,
+    20,
+    undefined,
+    creditOptions,
+  );
+  const send = vi.fn().mockResolvedValue(undefined);
   const channel = (id = 'vc') =>
-    ({ id, guild: { id: 'guild', voiceAdapterCreator: vi.fn() } }) as unknown as VoiceBasedChannel;
-  return { manager, connections, channel, logger, engine };
+    ({
+      id,
+      members: new Map([['u', { id: 'u', user: { bot: false } }]]),
+      isSendable: () => true,
+      send,
+      permissionsFor: () => ({ has: () => true }),
+      guild: { id: 'guild', members: { me: {} }, voiceAdapterCreator: vi.fn() },
+    }) as unknown as VoiceBasedChannel;
+  return { manager, connections, channel, logger, engine, send };
 }
 beforeEach(() => vi.resetAllMocks());
 const flush = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 describe('VoiceSessionManager', () => {
+  it('自動接続で公開通知し、手動移動・外部移動では集合を引き継ぎ退出後は初期化する', async () => {
+    const style = {
+      styleId: 3,
+      styleName: 'ノーマル',
+      speakerUuid: 'z',
+      speakerName: 'ずんだもん',
+    };
+    const s = setup({
+      catalog: { list: async () => [style], find: async () => style },
+      resolveVoice: async () => ({ styleId: 3, speedScale: 1, pitchScale: 0 }),
+    });
+    const first = await s.manager.join(s.channel(), 'auto');
+    expect(s.send).toHaveBeenCalledWith(
+      '接続しました。\n現在設定されているキャラクター：VOICEVOX:ずんだもん',
+    );
+    expect(first.credits?.credited).toEqual(new Set(['z']));
+    s.manager.updateVoiceState('guild', 'external');
+    expect(first.credits?.announceChannelId).toBe('vc');
+    const moved = await s.manager.join(s.channel('next'), 'text');
+    expect(moved.credits).toBe(first.credits);
+    expect(moved.credits?.credited).toEqual(new Set(['z']));
+    s.manager.leave('guild');
+    const next = await s.manager.join(s.channel('new'), 'text');
+    expect(next.credits).not.toBe(first.credits);
+    expect(next.credits?.credited.size).toBe(0);
+    s.manager.destroyAll();
+  });
   it('移動前の遅延退出イベントで新しい接続を破棄しない', async () => {
     const s = setup();
     await s.manager.join(s.channel(), 'text');
