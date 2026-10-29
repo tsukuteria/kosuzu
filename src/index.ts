@@ -5,6 +5,9 @@ import { handleInteraction } from './events/interactionCreate.js';
 import { checkVoicevoxHealth, handleReady } from './events/ready.js';
 import { createLogger } from './logger.js';
 import { VoicevoxClient, type TtsEngine } from './tts/voicevox.js';
+import { VoiceSessionManager } from './voice/manager.js';
+import { handleMessage } from './events/messageCreate.js';
+import type { CommandContext } from './commands/types.js';
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
@@ -21,6 +24,9 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+const sessions = new VoiceSessionManager(ttsEngine, logger, config.maxQueueLength);
+const context: CommandContext = { sessions, resolveStyle: () => config.defaultStyleId };
+client.on(Events.MessageCreate, (message) => handleMessage(message, context, config, logger));
 
 client.once(Events.ClientReady, (readyClient) => {
   void checkVoicevoxHealth(ttsEngine, logger);
@@ -31,7 +37,7 @@ client.once(Events.ClientReady, (readyClient) => {
   }
 });
 client.on(Events.InteractionCreate, (interaction) => {
-  void handleInteraction(interaction, commands, logger);
+  void handleInteraction(interaction, commands, logger, context);
 });
 process.on('unhandledRejection', (error) => logger.error({ err: error }, '未処理の Promise 拒否'));
 process.on('uncaughtException', (error) => {
@@ -45,6 +51,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     if (shuttingDown) process.exit(1);
     shuttingDown = true;
     logger.info({ signal }, '終了します');
+    sessions.destroyAll();
     void client.destroy().then(
       () => process.exit(0),
       (error: unknown) => {

@@ -9,6 +9,8 @@ export interface Speaker {
 }
 
 export interface AudioQuery {
+  outputSamplingRate: number;
+  outputStereo: boolean;
   speedScale: number;
   pitchScale: number;
   intonationScale: number;
@@ -51,6 +53,8 @@ export type AudioQueryOverrides = Partial<
     | 'volumeScale'
     | 'prePhonemeLength'
     | 'postPhonemeLength'
+    | 'outputSamplingRate'
+    | 'outputStereo'
   >
 >;
 

@@ -31,6 +31,8 @@ docs/               設計ドキュメント
 tests/              テスト
 ```
 
+M3: `voice/manager.ts` がギルド別セッションと接続を管理し、`voice/session.ts` が先読み・FIFO 再生を担当する。`events/messageCreate.ts` で対象投稿を処理し、`tts/normalize.ts` と `tts/wav.ts` は純粋関数。コマンドは `execute(interaction, context)` でセッション管理と話者解決を受け取る。
+
 ## コマンド（M1 以降で整備）
 
 - `npm install` 依存関係のインストール

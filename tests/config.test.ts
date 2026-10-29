@@ -21,8 +21,43 @@ describe('validateConfig', () => {
       logLevel: 'info',
       voicevoxUrl: 'http://127.0.0.1:50021',
       voicevoxTimeoutMs: 15_000,
+      defaultStyleId: 3,
+      readMaxLength: 100,
+      maxQueueLength: 20,
+      readSkipPrefix: ';',
     });
     expect(Object.isFrozen(config)).toBe(true);
+  });
+  it.each(['DEFAULT_STYLE_ID', 'READ_MAX_LENGTH', 'MAX_QUEUE_LENGTH'])(
+    '不正な %s を拒否する',
+    (key) => {
+      for (const value of ['-1', '1.5', 'NaN', 'Infinity', '9007199254740992']) {
+        expect(() =>
+          validateConfig({ DISCORD_TOKEN: 'token', DISCORD_CLIENT_ID: 'id', [key]: value }),
+        ).toThrow(key);
+      }
+    },
+  );
+  it('読み上げ設定を読み込み、話者 0 と空の除外接頭辞を許す', () => {
+    expect(
+      validateConfig({
+        DISCORD_TOKEN: 'token',
+        DISCORD_CLIENT_ID: 'id',
+        DEFAULT_STYLE_ID: '0',
+        READ_MAX_LENGTH: '40',
+        MAX_QUEUE_LENGTH: '2',
+        READ_SKIP_PREFIX: '',
+      }),
+    ).toMatchObject({
+      defaultStyleId: 0,
+      readMaxLength: 40,
+      maxQueueLength: 2,
+      readSkipPrefix: '',
+    });
+    for (const key of ['READ_MAX_LENGTH', 'MAX_QUEUE_LENGTH'])
+      expect(() =>
+        validateConfig({ DISCORD_TOKEN: 'token', DISCORD_CLIENT_ID: 'id', [key]: '0' }),
+      ).toThrow(key);
   });
   it('任意項目を読み込む', () => {
     const config = validateConfig({

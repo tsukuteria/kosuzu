@@ -1,18 +1,19 @@
 import { MessageFlags, type Interaction } from 'discord.js';
 import type { Logger } from 'pino';
-import type { Command } from '../commands/types.js';
+import type { Command, CommandContext } from '../commands/types.js';
 
 export async function handleInteraction(
   interaction: Interaction,
   commands: readonly Command[],
   logger: Logger,
+  context: CommandContext,
 ): Promise<void> {
   try {
     if (interaction.isChatInputCommand()) {
       const command = commands.find((item) => item.data.name === interaction.commandName);
       if (!command) return;
       try {
-        await command.execute(interaction);
+        await command.execute(interaction, context);
       } catch (error) {
         logger.error(
           { err: error, command: interaction.commandName },
