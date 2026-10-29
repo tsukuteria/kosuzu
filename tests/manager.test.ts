@@ -257,4 +257,31 @@ describe('VoiceSessionManager', () => {
     const s = setup();
     expect(await s.manager.readTargets(s.channel(), 'auto')).toEqual(new Set(['vc']));
   });
+  it('固定チャンネルを自動参加で優先し手動参加にも追加する', async () => {
+    const s = setup();
+    const db = openDatabase(':memory:');
+    try {
+      const store = new SqliteSettings(db);
+      store.setLastTextChannel('guild', 'last');
+      store.setGuildOption('guild', 'fixed_text_channel_id', 'fixed');
+      const manager = new VoiceSessionManager(s.engine, s.logger as unknown as Logger, 20, store);
+      const fetch = vi
+        .fn()
+        .mockResolvedValue({
+          isTextBased: () => true,
+          permissionsFor: () => ({ has: () => true }),
+        });
+      const channel = {
+        id: 'vc',
+        guild: { id: 'guild', members: { me: {} }, channels: { fetch } },
+      } as unknown as VoiceBasedChannel;
+      expect(await manager.readTargets(channel, 'auto')).toEqual(new Set(['vc', 'fixed']));
+      expect(await manager.readTargets(channel, 'manual')).toEqual(
+        new Set(['vc', 'manual', 'fixed']),
+      );
+      expect(fetch).toHaveBeenCalledWith('fixed');
+    } finally {
+      db.close();
+    }
+  });
 });

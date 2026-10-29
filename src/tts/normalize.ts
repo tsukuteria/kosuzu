@@ -2,7 +2,13 @@ export type MentionResolver = (kind: 'user' | 'role' | 'channel', id: string) =>
 
 export function normalizeText(
   text: string,
-  options: { resolve?: MentionResolver; maxLength?: number; hasAttachments?: boolean } = {},
+  options: {
+    resolve?: MentionResolver;
+    maxLength?: number;
+    truncateSuffix?: string;
+    hasAttachments?: boolean;
+    transform?: (text: string) => string;
+  } = {},
 ): string {
   let result = text
     .replace(/```[\s\S]*?(?:```|$)/g, ' コードブロック省略 ')
@@ -21,7 +27,11 @@ export function normalizeText(
     .replace(/\s+/g, ' ')
     .trim();
   if (!result && options.hasAttachments) result = '添付ファイル';
-  const chars = Array.from(result);
+  if (options.transform) result = options.transform(result);
+  const chars = Array.from(
+    new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(result),
+    (part) => part.segment,
+  );
   const max = options.maxLength ?? 100;
-  return chars.length > max ? chars.slice(0, max).join('') + '以下略' : result;
+  return chars.length > max ? chars.slice(0, max).join('') + (options.truncateSuffix ?? '以下略') : result;
 }

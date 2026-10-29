@@ -41,7 +41,9 @@ function setup(sub = 'show', value = '3') {
     memberPermissions: { has: vi.fn((): boolean => true) },
     options: {
       getSubcommand: () => sub,
+      getSubcommandGroup: () => null as string | null,
       getBoolean: () => false,
+      getInteger: () => Number(value),
       getString: () => value,
       getChannel: () => ({ id: 'vc', type: ChannelType.GuildVoice }),
       getFocused: () => 'ずんだ',
@@ -60,6 +62,45 @@ function setup(sub = 'show', value = '3') {
   };
 }
 describe('/config', () => {
+  it.each([
+    ['max-length', '42', 'readMaxLength', 42],
+    ['max-length-reset', '42', 'readMaxLength', null],
+    ['skip-prefix', '!', 'skipPrefix', '!'],
+    ['skip-prefix', '', 'skipPrefix', ''],
+    ['skip-prefix-reset', '!', 'skipPrefix', null],
+    ['announce', '', 'announceJoin', false],
+    ['read-name', 'on_change', 'readName', 'on_change'],
+    ['dict-permission', 'admin', 'dictPermission', 'admin'],
+  ])('%s を保存する', async (sub, value, key, expected) => {
+    const s = setup(sub, value);
+    await s.run();
+    expect(s.store.guild('g')).toMatchObject({ [key]: expected });
+  });
+  it('固定チャンネルを設定・解除する', async () => {
+    const s = setup('set');
+    s.interaction.options.getSubcommandGroup = () => 'channel';
+    s.interaction.options.getChannel = () => ({ id: 'text', type: ChannelType.GuildText });
+    await s.run();
+    expect(s.store.guild('g')?.fixedTextChannelId).toBe('text');
+    const reset = setup('reset');
+    reset.interaction.options.getSubcommandGroup = () => 'channel';
+    reset.store.setGuildOption('g', 'fixed_text_channel_id', 'text');
+    await reset.run();
+    expect(reset.store.guild('g')?.fixedTextChannelId).toBeNull();
+  });
+  it('show は実効値と環境設定を表示する', async () => {
+    const s = setup();
+    s.context.readDefaults = { readMaxLength: 120, readSkipPrefix: '?' };
+    s.store.setGuildOption('g', 'read_name', 'on_change');
+    s.store.setGuildOption('g', 'dict_permission', 'admin');
+    s.store.setGuildOption('g', 'announce_join', 0);
+    await s.run();
+    expect(s.interaction.editReply).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /最大文字数: 120（環境設定）[\s\S]*除外接頭辞: \?（環境設定）[\s\S]*接続音声: 無効[\s\S]*名前: on_change[\s\S]*辞書変更権限: admin/,
+      ),
+    );
+  });
   it('登録時に ManageGuild を要求する', () => {
     expect(config.data.toJSON()).toMatchObject({
       default_member_permissions: String(PermissionFlagsBits.ManageGuild),
@@ -122,7 +163,9 @@ describe('/config', () => {
     s.store.setVoiceChannelExcluded('g', 'vc', true);
     await s.run();
     expect(s.interaction.editReply).toHaveBeenCalledWith(
-      '自動参加: 有効\n除外 VC: <#vc>\n最後の /join: <#text>\nサーバー既定話者: ずんだもん（ノーマル）',
+      expect.stringContaining(
+        '自動参加: 有効\n除外 VC: <#vc>\n最後の /join: <#text>\nサーバー既定話者: ずんだもん（ノーマル）',
+      ),
     );
   });
   it('候補は既存カタログ検索を再利用し、管理権限を確認する', async () => {

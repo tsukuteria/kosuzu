@@ -61,8 +61,11 @@ export class VoiceSessionManager {
   ): Promise<Set<string>> {
     const targets = new Set([channel.id]);
     if (textChannelId !== 'auto') targets.add(textChannelId);
-    else {
-      const last = this.store?.guild(channel.guild.id)?.lastTextChannelId;
+    {
+      const settings = this.store?.guild(channel.guild.id);
+      const last =
+        settings?.fixedTextChannelId ??
+        (textChannelId === 'auto' ? settings?.lastTextChannelId : null);
       if (last) {
         const text = await channel.guild.channels.fetch(last).catch(() => null);
         const me = channel.guild.members.me;
@@ -112,7 +115,8 @@ export class VoiceSessionManager {
           await prepareAutoCredits(
             channel,
             { credits, readsChannel: (id) => targets.has(id) },
-            this.store?.guild(channel.guild.id)?.lastTextChannelId,
+            this.store?.guild(channel.guild.id)?.fixedTextChannelId ??
+              this.store?.guild(channel.guild.id)?.lastTextChannelId,
             this.logger,
           );
         else

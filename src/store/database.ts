@@ -20,6 +20,17 @@ const migrations = [
   CREATE UNIQUE INDEX enabled_global ON enabled_speakers(speaker_uuid) WHERE guild_id IS NULL;`,
   `ALTER TABLE guild_settings ADD COLUMN autojoin INTEGER NOT NULL DEFAULT 1;
   ALTER TABLE guild_settings ADD COLUMN excluded_voice_channels TEXT NOT NULL DEFAULT '[]';`,
+  `ALTER TABLE guild_settings ADD COLUMN fixed_text_channel_id TEXT;
+  ALTER TABLE guild_settings ADD COLUMN read_max_length INTEGER;
+  ALTER TABLE guild_settings ADD COLUMN skip_prefix TEXT;
+  ALTER TABLE guild_settings ADD COLUMN announce_join INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE guild_settings ADD COLUMN read_name TEXT NOT NULL DEFAULT 'off' CHECK(read_name IN ('off', 'on_change'));
+  ALTER TABLE guild_settings ADD COLUMN dict_permission TEXT NOT NULL DEFAULT 'everyone' CHECK(dict_permission IN ('everyone', 'admin'));
+  CREATE TABLE dictionary (
+    guild_id TEXT NOT NULL, surface TEXT NOT NULL, reading TEXT NOT NULL,
+    created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(guild_id, surface)
+  ) STRICT;`,
 ];
 
 export function migrate(db: DatabaseSync): void {

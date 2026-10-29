@@ -38,6 +38,7 @@ const sessions = new VoiceSessionManager(ttsEngine, logger, config.maxQueueLengt
   resolveVoice,
 });
 const context: CommandContext = {
+  readDefaults: config,
   engine: ttsEngine,
   logger,
   sessions,

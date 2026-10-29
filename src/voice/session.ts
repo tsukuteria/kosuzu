@@ -23,6 +23,7 @@ interface Item {
 }
 
 export class GuildVoiceSession {
+  lastSpeakerId?: string;
   private readChannelIds = new Set<string>();
   private queue: Item[] = [];
   private current?: Item;

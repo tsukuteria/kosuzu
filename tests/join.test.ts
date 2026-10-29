@@ -64,6 +64,15 @@ function setup() {
   };
 }
 describe('/join', () => {
+  it('接続音声を無効にしてもクレジットを公開する', async () => {
+    const s = setup();
+    s.context.store.setGuildOption('guild', 'announce_join', 0);
+    await s.run();
+    expect(s.enqueue).not.toHaveBeenCalled();
+    expect(s.interaction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining('VOICEVOX:ずんだもん'),
+    );
+  });
   it('VC 未参加は非公開で案内する', async () => {
     const s = setup();
     s.interaction.member.voice.channel = null;

@@ -20,7 +20,7 @@ describe('SQLite', () => {
     );
     migrate(db);
     const store = new SqliteSettings(db);
-    expect(store.guild('g')).toEqual({
+    expect(store.guild('g')).toMatchObject({
       defaultStyleId: 8,
       lastTextChannelId: 'text',
       autojoin: true,
@@ -41,9 +41,31 @@ describe('SQLite', () => {
     const { db, store } = memoryStore();
     store.setLastTextChannel('g', 'text');
     migrate(db);
-    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(2);
+    expect(db.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
     expect(store.guild('g')?.lastTextChannelId).toBe('text');
     expect(db.prepare('PRAGMA foreign_keys').get()?.foreign_keys).toBe(1);
+  });
+  it('v2 DB を v3 に更新して既存設定を保持する', () => {
+    const db = new DatabaseSync(':memory:');
+    databases.push(db);
+    db.exec(`CREATE TABLE guild_settings(guild_id TEXT PRIMARY KEY, default_style_id INTEGER,
+      last_text_channel_id TEXT, autojoin INTEGER NOT NULL DEFAULT 1,
+      excluded_voice_channels TEXT NOT NULL DEFAULT '[]') STRICT;
+      INSERT INTO guild_settings VALUES ('g', 8, 'text', 0, '["vc"]');
+      PRAGMA user_version = 2`);
+    migrate(db);
+    expect(db.prepare('SELECT * FROM guild_settings').get()).toMatchObject({
+      default_style_id: 8,
+      last_text_channel_id: 'text',
+      autojoin: 0,
+      excluded_voice_channels: '["vc"]',
+      fixed_text_channel_id: null,
+      read_max_length: null,
+      skip_prefix: null,
+      announce_join: 1,
+      read_name: 'off',
+      dict_permission: 'everyone',
+    });
   });
   it('ギルド・ユーザー設定を分離して更新・削除する', () => {
     const { store } = memoryStore();
@@ -51,7 +73,7 @@ describe('SQLite', () => {
     store.setDefaultStyle('g', 3);
     store.setLastTextChannel('g', 'text');
     store.setDefaultStyle('g', 8);
-    expect(store.guild('g')).toEqual({
+    expect(store.guild('g')).toMatchObject({
       defaultStyleId: 8,
       lastTextChannelId: 'text',
       autojoin: true,

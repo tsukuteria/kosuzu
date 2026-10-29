@@ -69,8 +69,11 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 | `/dict add\|remove\|list` | 全員（設定で制限可） | サーバー辞書（読み替え）管理 |
 | `/config autojoin enabled:<boolean>` | 管理者 | 自動参加の有効/無効 |
 | `/config exclude` / `include channel:<voice>` | 管理者 | 自動参加の除外 VC を追加・解除 |
-| `/config show` | 管理者 | 自動参加・除外 VC・最後の `/join`・サーバー既定話者を表示 |
-| `/config channel <text>` | 管理者 | 読み上げ対象の上書き（M7） |
+| `/config show` | 管理者 | サーバー設定と環境設定の実効値を表示 |
+| `/config channel set channel:<text>` / `channel reset` | 管理者 | 固定読み上げチャンネルを設定・解除 |
+| `/config max-length` / `max-length-reset` | 管理者 | 本文の文字数上限・環境設定への復帰 |
+| `/config skip-prefix` / `skip-prefix-reset` | 管理者 | 除外接頭辞・環境設定への復帰 |
+| `/config announce` / `read-name` / `dict-permission` | 管理者 | 接続音声・名前・辞書変更権限 |
 | `/config default-voice speaker:<speaker>` / `default-voice-reset`       | 管理者 | サーバー既定の話者                                                                     |
 | `/speaker install <speaker>`     | 管理者 | 新規キャラのインストール（§4.5）                                                       |
 | `/speaker uninstall <speaker>`   | 管理者 | キャラの無効化                                                                         |
@@ -90,9 +93,9 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 - **終了検知**: 手動・自動とも接続 VC が無人なら `AUTO_LEAVE_GRACE_MS`（既定 10000ms、0〜2147483647）後に退出。再入室で取消し、期限時にも人数・セッションを確認する。
 - 退出後は他の対象 VC に人間がいれば参加。起動時も同じく、人間の人数が多い順 → チャンネル位置の昇順 → ID の辞書順で選択する。接続中は他 VC の開始だけでは移動しない。
 - `autojoin` 無効化・除外変更は次回の自動参加判定から適用し、現在の接続は維持する。無人時の退出は無効化中も行う。有効化時には即時スキャンせず、次の開始イベントまたは再起動から参加する。
-- 読み上げ対象は ID の集合。手動 `/join` は実行チャンネルと VC 内蔵チャットを対象とし、`last_text_channel_id` を保存。自動参加は VC チャットと最後の実行チャンネル（現在も存在し、閲覧・送信可能な場合）を読む。上書き設定 `/config channel` は M7。
+- 読み上げ対象は ID の集合。手動 `/join` は実行チャンネルと VC 内蔵チャットと固定チャンネルを対象とし、`last_text_channel_id` を保存。自動参加は VC チャットと固定チャンネル（未設定なら最後の実行チャンネル）を読む。追加先は閲覧・送信可能な場合に限る。
 - Bot が外部から移動されたらセッションの VC ID と VC チャット対象を即時更新し、追加の非 VC 対象は保持する。外部切断なら即時破棄し、自動再参加しない。通常の Disconnected 復旧待機は維持するが、破棄後は Ready 待機や復旧失敗ログを抑止する。
-- 自動参加では共通の「接続しました」をサーバー既定 → 環境既定の音声でキューに入れる。接続・クレジットの公開投稿は §4.8 を参照。退出アナウンス・切替設定は追加しない。
+- 接続音声は設定で無効化できる。接続・クレジットの公開投稿は常に行う（§4.8）。
 - ギルドごとに自動判定を直列化し、manager の join 待機列内でも auto の既存接続を再確認する。接続失敗は warn を記録し、定期再試行は行わない（次の新規セッション開始は再試行可能）。
 - manager のセッション変更通知で手動接続も監視し、`destroyAll()` / シャットダウンでタイマー・待機中の自動判定を停止する。
 
@@ -111,7 +114,9 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 - `enabled_speakers` はギルド行 `(guild_id,speaker_uuid)` とグローバル行 `(speaker_uuid)` に別々の部分 UNIQUE INDEX を設定し、NULL の重複を防ぐ。
 - `style_id NULL` は速度・ピッチのみ指定して既定話者に追従するため。話者の解決はユーザー → サーバー既定 → 環境設定。利用不可の保存 ID は debug ログ付きで飛ばす。速度・ピッチはユーザー値、未設定なら 1 / 0。設定の既定 ID も利用不可なら解決失敗（発話単位で捕捉）。カタログは既存の ENGINE クライアントの TTL キャッシュを利用。
 - `DATABASE_PATH` の既定は `data/kosuzu.db`。親ディレクトリ自動作成、WAL・foreign_keys・busy_timeout 有効化。`PRAGMA user_version` で版を管理し、未適用分を起動時に単一トランザクションで順番に適用。未来版は拒否。正常終了時は DB を閉じる。
-- M5 migration 2: `guild_settings` に `autojoin INTEGER NOT NULL DEFAULT 1`、`excluded_voice_channels TEXT NOT NULL DEFAULT '[]'`（VC ID の JSON 配列）を追加。既存行も既定で有効。`dictionary` 等は後続マイルストーンで追加する。
+- M5 migration 2: `guild_settings` に `autojoin INTEGER NOT NULL DEFAULT 1`、`excluded_voice_channels TEXT NOT NULL DEFAULT '[]'`（VC ID の JSON 配列）を追加。既存行も既定で有効。
+- M7 migration 3: `dictionary(guild_id, surface, reading, created_by, created_at)` を追加し、表記は NFKC と ASCII 小文字に正規化してギルド内で一意とする。`guild_settings` に固定チャンネル、文字数上限、除外接頭辞、接続音声、名前読み、辞書変更権限を追加する。NULL の文字数・接頭辞は環境設定に従い、空の接頭辞は無効を意味する。
+- 辞書は通常の正規化後、本文の文字数制限前に最長一致で一度だけ適用する。正規化で生成した「URL省略」などにも辞書が適用される。名前にも辞書を適用し、20 書記素で末尾表記なしに切り詰める。空でなければ発話者が変わった場合のみ付け、本文の文字数上限には含めない。
 
 ### 4.5 キャラの「インストール」（R6）
 
@@ -164,7 +169,7 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 | M4 | ユーザー別話者 | SQLite 導入、`/voice` 系コマンド、オートコンプリート |
 | M5 | 自動入退室 | `voiceStateUpdate` 追跡、起動時スキャン、`/config autojoin` |
 | M6 | キャラのインストール（実装済み） | `/speaker install/uninstall/list`、`/credits` |
-| M7 | 辞書・サーバー設定 | `/dict`、`/config` 一式 |
+| M7 | 辞書・サーバー設定（実装済み） | `/dict`、`/config` 一式 |
 | M8 | 運用整備 | Dockerfile / compose、README の導入手順、グレースフルシャットダウン |
 
 ## 6. リスク・留意点

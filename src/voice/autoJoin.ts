@@ -163,6 +163,7 @@ export class AutoJoin {
     const session = await this.sessions.join(channel, 'auto');
     this.refresh(guild);
     if (session.channelId !== id) return;
+    if (this.store.guild(guild.id)?.announceJoin === false) return;
     try {
       const voice = await this.resolveVoice(guild.id);
       if (!this.stopped && this.sessions.get(guild.id) === session)

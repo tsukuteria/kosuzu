@@ -56,9 +56,10 @@ export const join: Command = {
         async (content) => interaction.editReply(content),
       );
     } else await interaction.editReply(reply);
-    session.enqueue({
-      text: JOIN_ANNOUNCEMENT,
-      ...(await context.resolveVoice(interaction.guildId, interaction.user.id)),
-    });
+    if (context.store.guild(interaction.guildId)?.announceJoin !== false)
+      session.enqueue({
+        text: JOIN_ANNOUNCEMENT,
+        ...(await context.resolveVoice(interaction.guildId, interaction.user.id)),
+      });
   },
 };

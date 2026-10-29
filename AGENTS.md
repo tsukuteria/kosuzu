@@ -39,6 +39,8 @@ M5: `voice/autoJoin.ts` が純粋な開始・候補選択関数とギルド別�
 
 M6: `commands/speaker.ts` がギルド別有効化と規約確認 collector、`commands/credits.ts` が公開クレジットを担当する。`tts/policy.ts` が規約 URL・抜粋、`tts/library.ts` が上限付き ZIP 取得。共通 context で ENGINE と pino logger を注入する。
 
+M7: `commands/dict.ts` が辞書操作、`tts/dictionary.ts` が読み替えを担当し、`store/settings.ts` が辞書とサーバー設定を管理する。
+
 ## コマンド（M1 以降で整備）
 
 - `npm install` 依存関係のインストール

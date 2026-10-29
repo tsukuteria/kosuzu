@@ -7,6 +7,7 @@ import type { TtsEngine } from '../tts/voicevox.js';
 import type { Logger } from 'pino';
 
 export interface CommandContext {
+  readDefaults?: { readMaxLength: number; readSkipPrefix: string };
   engine: TtsEngine;
   logger: Pick<Logger, 'warn'>;
   sessions: Pick<VoiceSessionManager, 'join' | 'leave' | 'get'>;

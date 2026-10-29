@@ -6,6 +6,7 @@ import { leave } from './leave.js';
 import { skip } from './skip.js';
 import { voice } from './voice.js';
 import { config } from './config.js';
+import { dict } from './dict.js';
 import type { Command } from './types.js';
 
-export const commands: Command[] = [ping, join, leave, skip, voice, config, speaker, credits];
+export const commands: Command[] = [ping, join, leave, skip, voice, config, dict, speaker, credits];

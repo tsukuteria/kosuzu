@@ -52,6 +52,39 @@ function setup() {
   return { message, options, run, enqueue, context, get, logger };
 }
 describe('handleMessage', () => {
+  it('ギルド設定の除外・文字数・辞書・発話者名を適用する', async () => {
+    const s = setup();
+    s.enqueue.mockReturnValue(true);
+    s.context.store.setGuildOption('guild', 'skip_prefix', '!');
+    s.context.store.setGuildOption('guild', 'read_max_length', 10);
+    s.context.store.setGuildOption('guild', 'read_name', 'on_change');
+    s.context.store.putDictionary('guild', 'abc', '読み', 'user');
+    s.message.content = '!skip';
+    await s.run();
+    expect(s.enqueue).not.toHaveBeenCalled();
+    s.message.content = 'ABC1234567890';
+    await s.run();
+    await s.run();
+    expect(s.enqueue.mock.calls.map(([item]) => item.text)).toEqual([
+      'userさん、読み12345678以下略',
+      '読み12345678以下略',
+    ]);
+    s.message.author.id = 'other';
+    await s.run();
+    expect(s.enqueue.mock.calls[2][0].text).toBe('otherさん、読み12345678以下略');
+  });
+  it.each([
+    ['長い名前', '👨‍👩‍👧‍👦'.repeat(21), '👨‍👩‍👧‍👦'.repeat(20) + 'さん、こんにちは'],
+    ['辞書', 'handle', '読みさん、こんにちは'],
+    ['空の名前', '   ', 'こんにちは'],
+  ])('%s を名前に適用する', async (_label, name, expected) => {
+    const s = setup();
+    s.context.store.setGuildOption('guild', 'read_name', 'on_change');
+    s.context.store.putDictionary('guild', 'handle', '読み', 'user');
+    const message = { ...s.message, member: { displayName: name } };
+    await handleMessage(message as unknown as Message, s.context, s.options, s.logger);
+    expect(s.enqueue.mock.calls[0][0].text).toBe(expected);
+  });
   it('非同期カタログ取得中のメッセージを到着順に追加する', async () => {
     const s = setup();
     let resolve!: (response: Response) => void;

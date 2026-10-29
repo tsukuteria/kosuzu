@@ -2,6 +2,10 @@ import type { Message } from 'discord.js';
 import type { Logger } from 'pino';
 import type { CommandContext } from '../commands/types.js';
 import { normalizeText } from '../tts/normalize.js';
+import { applyDictionary } from '../tts/dictionary.js';
+import type { GuildVoiceSession } from '../voice/session.js';
+
+const pending = new WeakMap<GuildVoiceSession, Promise<void>>();
 
 export async function handleMessage(
   message: Message,
@@ -11,15 +15,18 @@ export async function handleMessage(
 ): Promise<void> {
   try {
     if (!message.guildId || message.author.bot || message.system) return;
+    const settings = context.store.guild(message.guildId);
+    const skipPrefix = settings?.skipPrefix ?? options.readSkipPrefix;
     const session = context.sessions.get(message.guildId);
     if (
       !session ||
       !session.readsChannel(message.channelId) ||
-      (options.readSkipPrefix && message.content.startsWith(options.readSkipPrefix))
+      (skipPrefix && message.content.startsWith(skipPrefix))
     )
       return;
     const text = normalizeText(message.content, {
-      maxLength: options.readMaxLength,
+      maxLength: settings?.readMaxLength ?? options.readMaxLength,
+      transform: (value) => applyDictionary(value, context.store.dictionary(message.guildId!)),
       hasAttachments: message.attachments.size > 0,
       resolve: (kind, id) => {
         if (kind === 'user')
@@ -37,11 +44,37 @@ export async function handleMessage(
         );
       },
     });
-    if (text)
-      session.enqueue({
-        text,
-        ...(await context.resolveVoice(message.guildId, message.author.id)),
-      });
+    if (text) {
+      const previous = pending.get(session) ?? Promise.resolve();
+      const guildId = message.guildId;
+      const voiceResult = context.resolveVoice(guildId, message.author.id).then(
+        (voice) => ({ voice }),
+        (error: unknown) => ({ error }),
+      );
+      const task = previous
+        .catch(() => {})
+        .then(async () => {
+          const result = await voiceResult;
+          if ('error' in result) throw result.error;
+          const voice = result.voice;
+          const name = normalizeText(
+            message.member?.displayName ?? message.author.displayName ?? message.author.id,
+            {
+              maxLength: 20,
+              truncateSuffix: '',
+              transform: (value) => applyDictionary(value, context.store.dictionary(guildId)),
+            },
+          );
+          const prefix =
+            name && settings?.readName === 'on_change' && session.lastSpeakerId !== message.author.id
+              ? `${name}さん、`
+              : '';
+          if (session.enqueue({ text: prefix + text, ...voice }))
+            session.lastSpeakerId = message.author.id;
+        });
+      pending.set(session, task);
+      await task;
+    }
   } catch (error) {
     logger.error({ err: error }, 'メッセージの読み上げ処理に失敗しました');
   }

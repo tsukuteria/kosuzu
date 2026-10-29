@@ -12,6 +12,7 @@ function setup() {
     excludedVoiceChannels: [] as string[],
     defaultStyleId: null,
     lastTextChannelId: null,
+    announceJoin: true,
   };
   const player = { play: vi.fn(), stop: vi.fn(), onIdle: vi.fn(), onError: vi.fn() };
   const logger = { warn: vi.fn() };
@@ -95,6 +96,18 @@ function setup() {
 }
 
 describe('自動入退室', () => {
+  it('接続音声を無効にしても自動参加する', async () => {
+    const s = setup();
+    const enqueue = vi.spyOn(GuildVoiceSession.prototype, 'enqueue');
+    s.settings.announceJoin = false;
+    s.a.members.set('u', s.human);
+    await s.scan();
+    expect(s.sessions.join).toHaveBeenCalled();
+    expect(s.current()).toBeDefined();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(s.logger.warn).not.toHaveBeenCalled();
+    enqueue.mockRestore();
+  });
   it('接続待機中のイベント連発を直列化する', async () => {
     const s = setup();
     s.a.members.set('u', s.human);
