@@ -9,7 +9,7 @@ export interface ResolvedVoice {
 }
 
 export function createVoiceResolver(
-  store: SettingsStore,
+  store: Pick<SettingsStore, 'user' | 'guild'>,
   catalog: Pick<SpeakerCatalog, 'list'>,
   defaultStyleId: number,
   logger: Pick<Logger, 'debug'>,

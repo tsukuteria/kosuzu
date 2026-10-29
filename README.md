@@ -1,6 +1,6 @@
 # kosuzu
 
-VOICEVOX を使う Discord 読み上げ Bot です。`/ping`、`/join`、`/leave`、`/skip` 、`/voice` と手動接続での読み上げに対応しています。
+VOICEVOX を使う Discord 読み上げ Bot です。`/ping`、`/join`、`/leave`、`/skip` 、`/voice`、`/config` と自動入退室・読み上げに対応しています。
 
 ## 準備
 
@@ -47,4 +47,20 @@ Bot・システム投稿と `;` で始まる投稿は除外します。`READ_SKI
 
 `DATABASE_PATH`（既定 `data/kosuzu.db`）に SQLite DB を作成し、ユーザー設定・サーバー既定・最後の `/join` 実行チャンネル・追加話者の有効化を保存します。`data/` はバックアップしてください。WAL 使用中は DB 本体だけのコピーを避け、Bot 停止後にコピーするか SQLite のバックアップ機能を使います。正常終了時に DB を閉じます。Node.js 24.22.0 では `node:sqlite` の ExperimentalWarning は発生しません。
 
-M5 用に `sessions.join(channel, 'auto')` を用意しています。読み上げ対象は VC チャットと最後の `/join` 実行チャンネル（現在も存在し、Bot が閲覧・送信可能な場合）。自動参加の検出自体は M5 で実装します。
+## 自動入退室とサーバー設定
+
+既定では、無人の通常 VC に最初の人間が入ると自動参加します。起動時にも既存 VC をスキャンします。AFK・ステージ・除外 VC・Bot に接続/発言権限のない VC は対象外です。Bot の人数は数えません。接続中は別 VC に人が入っても移動しません。
+
+手動・自動接続とも、無人になってから `AUTO_LEAVE_GRACE_MS`（既定 10000ms）後に退出し、途中で人が戻れば取消します。退出後に別 VC が継続中なら、人間の人数が多い順 → チャンネル位置 → ID の辞書順で参加先を選びます。Bot を移動すると VC チャットの読み上げも追従し、追加のテキスト対象は保持します。キック時はセッションを破棄し、その場では自動再参加しません。
+
+自動参加では VC チャットと最後の `/join` 実行チャンネル（現在も閲覧・送信可能な場合）を読みます。「接続しました」は音声だけで案内し、テキストには投稿しません。接続失敗はログに残し、繰り返し再試行せず次の開始イベントを待ちます。
+
+「サーバー管理」権限を持つメンバーは、非公開返信の次のコマンドを使えます。
+
+- `/config autojoin enabled:<boolean>`: 自動参加の有効/無効。
+- `/config exclude channel:<voice>` / `/config include channel:<voice>`: 自動参加の除外を追加/解除。
+- `/config show`: 自動参加・除外 VC・最後の `/join`・サーバー既定話者を表示。
+- `/config default-voice speaker:<speaker>`: 候補からサーバー既定話者を選択。
+- `/config default-voice-reset`: サーバー既定話者を解除して `DEFAULT_STYLE_ID` に戻す。
+
+設定は SQLite に保存します。自動参加・除外の変更は次回判定から適用し、現在の接続は維持します。自動参加が無効でも無人時の退出は行います。有効化直後のスキャンは行わず、次の開始イベントまたは再起動から自動参加します。更新後は `npm run deploy-commands` で `/config` を登録してください。

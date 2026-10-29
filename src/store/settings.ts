@@ -6,10 +6,14 @@ export interface UserVoice {
   pitch: number;
 }
 export interface GuildSettings {
+  autojoin: boolean;
+  excludedVoiceChannels: string[];
   defaultStyleId: number | null;
   lastTextChannelId: string | null;
 }
 export interface SettingsStore {
+  setAutojoin(guildId: string, enabled: boolean): void;
+  setVoiceChannelExcluded(guildId: string, channelId: string, excluded: boolean): void;
   guild(guildId: string): GuildSettings | undefined;
   setDefaultStyle(guildId: string, styleId: number | null): void;
   setLastTextChannel(guildId: string, channelId: string): void;
@@ -23,11 +27,35 @@ export class SqliteSettings implements SettingsStore {
   constructor(private readonly db: DatabaseSync) {}
 
   guild(guildId: string): GuildSettings | undefined {
-    return this.db
+    const row = this.db
       .prepare(
-        'SELECT default_style_id AS defaultStyleId, last_text_channel_id AS lastTextChannelId FROM guild_settings WHERE guild_id = ?',
+        'SELECT default_style_id AS defaultStyleId, last_text_channel_id AS lastTextChannelId, autojoin, excluded_voice_channels AS excludedVoiceChannels FROM guild_settings WHERE guild_id = ?',
       )
-      .get(guildId) as unknown as GuildSettings | undefined;
+      .get(guildId);
+    if (!row) return undefined;
+    return {
+      defaultStyleId: row.defaultStyleId as number | null,
+      lastTextChannelId: row.lastTextChannelId as string | null,
+      autojoin: row.autojoin === 1,
+      excludedVoiceChannels: JSON.parse(row.excludedVoiceChannels as string) as string[],
+    };
+  }
+  setAutojoin(guildId: string, enabled: boolean): void {
+    this.db
+      .prepare(
+        'INSERT INTO guild_settings(guild_id, autojoin) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET autojoin = excluded.autojoin',
+      )
+      .run(guildId, Number(enabled));
+  }
+  setVoiceChannelExcluded(guildId: string, channelId: string, excluded: boolean): void {
+    const ids = new Set(this.guild(guildId)?.excludedVoiceChannels ?? []);
+    if (excluded) ids.add(channelId);
+    else ids.delete(channelId);
+    this.db
+      .prepare(
+        'INSERT INTO guild_settings(guild_id, excluded_voice_channels) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET excluded_voice_channels = excluded.excluded_voice_channels',
+      )
+      .run(guildId, JSON.stringify([...ids]));
   }
   setDefaultStyle(guildId: string, styleId: number | null): void {
     this.db

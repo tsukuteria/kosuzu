@@ -27,7 +27,7 @@ export class GuildVoiceSession {
   private synthesizing = 0;
 
   constructor(
-    readonly channelId: string,
+    public channelId: string,
     textChannelIds: Iterable<string>,
     private readonly player: SessionPlayer,
     private readonly connection: { destroy(): void },
@@ -53,6 +53,12 @@ export class GuildVoiceSession {
 
   readsChannel(id: string): boolean {
     return this.readChannelIds.has(id);
+  }
+
+  move(channelId: string): void {
+    this.readChannelIds.delete(this.channelId);
+    this.channelId = channelId;
+    this.readChannelIds.add(channelId);
   }
 
   enqueue(utterance: Utterance): boolean {

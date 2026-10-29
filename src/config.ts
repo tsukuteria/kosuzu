@@ -3,6 +3,7 @@ import { loadEnvFile } from 'node:process';
 
 export interface Config {
   readonly databasePath: string;
+  readonly autoLeaveGraceMs: number;
   readonly discordToken: string;
   readonly discordClientId: string;
   readonly discordDevGuildId: string | undefined;
@@ -31,6 +32,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<Config> {
   if (missing.length) throw new Error(`必須の環境変数が未設定です: ${missing.join(', ')}`);
   return Object.freeze({
     databasePath: env.DATABASE_PATH?.trim() || 'data/kosuzu.db',
+    autoLeaveGraceMs: graceConfig(env),
     discordToken: env.DISCORD_TOKEN!.trim(),
     discordClientId: env.DISCORD_CLIENT_ID!.trim(),
     discordDevGuildId: env.DISCORD_DEV_GUILD_ID?.trim() || undefined,
@@ -41,6 +43,13 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<Config> {
     maxQueueLength: integerConfig(env, 'MAX_QUEUE_LENGTH', 20),
     readSkipPrefix: env.READ_SKIP_PREFIX ?? ';',
   });
+}
+
+function graceConfig(env: NodeJS.ProcessEnv): number {
+  const value = integerConfig(env, 'AUTO_LEAVE_GRACE_MS', 10_000, 0);
+  if (value > 2_147_483_647)
+    throw new Error('AUTO_LEAVE_GRACE_MS は 2147483647 以下で指定してください');
+  return value;
 }
 
 function integerConfig(env: NodeJS.ProcessEnv, key: string, fallback: number, min = 1): number {

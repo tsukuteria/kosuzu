@@ -35,6 +35,8 @@ M3: `voice/manager.ts` がギルド別セッションと接続を管理し、`vo
 
 M4: `store/database.ts` がマイグレーション、`store/settings.ts` が SQLite リポジトリ。`tts/speakers.ts` が選択可能な話者、`voice/resolver.ts` がユーザー→サーバー→設定の非同期解決。セッションの読み上げ対象は集合（`readsChannel`）。コマンド・候補取得は共通 context を受け取る。
 
+M5: `voice/autoJoin.ts` が純粋な開始・候補選択関数とギルド別の自動判定・退出タイマーを持つ。manager の変更・終了通知で手動接続と shutdown に追従する。Bot 自身の移動・切断は manager に即時反映する。`commands/config.ts` が管理権限を再確認し、migration 2 の自動参加・除外設定と既定話者を操作する。
+
 ## コマンド（M1 以降で整備）
 
 - `npm install` 依存関係のインストール

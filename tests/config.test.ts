@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { validateConfig } from '../src/config.js';
 
 describe('validateConfig', () => {
+  it('退出猶予の既定・0・上限と不正値を検証する', () => {
+    const env = { DISCORD_TOKEN: 'token', DISCORD_CLIENT_ID: 'id' };
+    for (const value of ['0', '500', '2147483647'])
+      expect(validateConfig({ ...env, AUTO_LEAVE_GRACE_MS: value }).autoLeaveGraceMs).toBe(
+        Number(value),
+      );
+    for (const value of ['-1', '0.5', 'NaN', 'Infinity', '2147483648'])
+      expect(() => validateConfig({ ...env, AUTO_LEAVE_GRACE_MS: value })).toThrow(
+        'AUTO_LEAVE_GRACE_MS',
+      );
+  });
   it('不足する必須項目を列挙する', () => {
     expect(() => validateConfig({ DISCORD_TOKEN: ' ' })).toThrow(
       /DISCORD_TOKEN, DISCORD_CLIENT_ID/,
@@ -16,6 +27,7 @@ describe('validateConfig', () => {
     });
     expect(config).toEqual({
       databasePath: 'data/kosuzu.db',
+      autoLeaveGraceMs: 10000,
       discordToken: 'token',
       discordClientId: 'id',
       discordDevGuildId: undefined,

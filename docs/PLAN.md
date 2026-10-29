@@ -67,9 +67,11 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 | `/voice reset`                | 全員   | 自分の音声設定を削除（非公開）                                                         |
 | `/voice list`                 | 全員   | 利用可能なキャラ一覧                                                                   |
 | `/dict add\|remove\|list` | 全員（設定で制限可） | サーバー辞書（読み替え）管理 |
-| `/config autojoin on\|off` | 管理者 | 自動参加の有効/無効 |
-| `/config channel <text>`      | 管理者 | 自動参加時の読み上げ対象テキストチャンネル                                             |
-| `/config default-voice`       | 管理者 | サーバー既定の話者                                                                     |
+| `/config autojoin enabled:<boolean>` | 管理者 | 自動参加の有効/無効 |
+| `/config exclude` / `include channel:<voice>` | 管理者 | 自動参加の除外 VC を追加・解除 |
+| `/config show` | 管理者 | 自動参加・除外 VC・最後の `/join`・サーバー既定話者を表示 |
+| `/config channel <text>` | 管理者 | 読み上げ対象の上書き（M7） |
+| `/config default-voice speaker:<speaker>` / `default-voice-reset`       | 管理者 | サーバー既定の話者                                                                     |
 | `/speaker install <name>`     | 管理者 | 新規キャラのインストール（§4.5）                                                       |
 | `/speaker uninstall <name>`   | 管理者 | キャラの無効化                                                                         |
 | `/credits`                    | 全員   | VOICEVOX および各キャラのクレジット表記                                                |
@@ -80,16 +82,18 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 
 ### 4.2 自動参加・自動退出（R4）
 
-`voiceStateUpdate` で各 VC の「人間（Bot 以外）の人数」を追跡する。
+`voice/autoJoin.ts` が `voiceStateUpdate` と起動時スキャンを処理する。人数・開始条件・候補選択は純粋関数、Discord キャッシュと権限の取得は小さな変換関数に分離する。
 
-- **開始検知**: Bot が未接続のサーバーで、ある VC の人間が 0 → 1 になったら参加。
-- **終了検知**: Bot が接続中の VC の人間が 0 になったら退出（短い猶予時間を設けて瞬断・移動に耐える）。
-- 複数の VC で同時にセッションがある場合は先着の VC に留まる（1 サーバー 1 接続の Discord 制約）。
-- 読み上げ対象はチャンネル ID の集合。手動 `/join` は実行チャンネルと VC 内蔵チャット（VC と同じ ID）。VC 移動時は移動先のチャットに追従する。
-- `/join` 実行時に `last_text_channel_id` を保存。M4 の `sessions.join(channel, 'auto')` は VC チャットと最後の実行チャンネル（現在も存在し、Bot が閲覧・送信可能な場合）を読む。M5 で自動参加検出からこの経路を利用する。`/config channel` の拡張は M7。
-- AFK チャンネルや、設定で除外した VC は対象外。
-- 参加・退出時に「接続しました」等の短いアナウンスを読み上げる（設定で切替）。
-- Bot 起動時は既存の VC 状態をスキャンし、セッション中の VC があれば参加する。
+- **開始検知**: Bot が未接続で、通常 VC の人間（Bot 以外）が 0 → 1 以上になったとき自動参加。サーバー設定 `autojoin` は既定で有効。
+- AFK・ステージ・除外 VC・Bot に Connect + Speak 権限のない VC は自動参加の対象外。
+- **終了検知**: 手動・自動とも接続 VC が無人なら `AUTO_LEAVE_GRACE_MS`（既定 10000ms、0〜2147483647）後に退出。再入室で取消し、期限時にも人数・セッションを確認する。
+- 退出後は他の対象 VC に人間がいれば参加。起動時も同じく、人間の人数が多い順 → チャンネル位置の昇順 → ID の辞書順で選択する。接続中は他 VC の開始だけでは移動しない。
+- `autojoin` 無効化・除外変更は次回の自動参加判定から適用し、現在の接続は維持する。無人時の退出は無効化中も行う。有効化時には即時スキャンせず、次の開始イベントまたは再起動から参加する。
+- 読み上げ対象は ID の集合。手動 `/join` は実行チャンネルと VC 内蔵チャットを対象とし、`last_text_channel_id` を保存。自動参加は VC チャットと最後の実行チャンネル（現在も存在し、閲覧・送信可能な場合）を読む。上書き設定 `/config channel` は M7。
+- Bot が外部から移動されたらセッションの VC ID と VC チャット対象を即時更新し、追加の非 VC 対象は保持する。外部切断なら即時破棄し、自動再参加しない。通常の Disconnected 復旧待機は維持するが、破棄後は Ready 待機や復旧失敗ログを抑止する。
+- 自動参加では共通の「接続しました」をサーバー既定 → 環境既定の音声でキューに入れる。テキスト投稿・退出アナウンス・切替設定は M5 では追加しない。
+- ギルドごとに自動判定を直列化し、manager の join 待機列内でも auto の既存接続を再確認する。接続失敗は warn を記録し、定期再試行は行わない（次の新規セッション開始は再試行可能）。
+- manager のセッション変更通知で手動接続も監視し、`destroyAll()` / シャットダウンでタイマー・待機中の自動判定を停止する。
 
 ### 4.3 ユーザーごとの話者（R5）
 
@@ -106,7 +110,7 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 - `enabled_speakers` はギルド行 `(guild_id,speaker_uuid)` とグローバル行 `(speaker_uuid)` に別々の部分 UNIQUE INDEX を設定し、NULL の重複を防ぐ。
 - `style_id NULL` は速度・ピッチのみ指定して既定話者に追従するため。話者の解決はユーザー → サーバー既定 → 環境設定。利用不可の保存 ID は debug ログ付きで飛ばす。速度・ピッチはユーザー値、未設定なら 1 / 0。設定の既定 ID も利用不可なら解決失敗（発話単位で捕捉）。カタログは既存の ENGINE クライアントの TTL キャッシュを利用。
 - `DATABASE_PATH` の既定は `data/kosuzu.db`。親ディレクトリ自動作成、WAL・foreign_keys・busy_timeout 有効化。`PRAGMA user_version` で版を管理し、未適用分を起動時に単一トランザクションで順番に適用。未来版は拒否。正常終了時は DB を閉じる。
-- `dictionary` や autojoin 等の設定列は後続マイルストーンのマイグレーションで追加する。
+- M5 migration 2: `guild_settings` に `autojoin INTEGER NOT NULL DEFAULT 1`、`excluded_voice_channels TEXT NOT NULL DEFAULT '[]'`（VC ID の JSON 配列）を追加。既存行も既定で有効。`dictionary` 等は後続マイルストーンで追加する。
 
 ### 4.5 キャラの「インストール」（R6）
 

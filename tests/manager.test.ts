@@ -62,6 +62,48 @@ const flush = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 describe('VoiceSessionManager', () => {
+  it('移動前の遅延退出イベントで新しい接続を破棄しない', async () => {
+    const s = setup();
+    await s.manager.join(s.channel(), 'text');
+    const next = await s.manager.join(s.channel('next'), 'text');
+    s.manager.updateVoiceState('guild', null, 'vc');
+    expect(s.manager.get('guild')).toBe(next);
+    s.manager.updateVoiceState('guild', 'next', null);
+    s.manager.updateVoiceState('guild', null, 'next');
+    expect(s.manager.get('guild')).toBeUndefined();
+  });
+  it('キックを即座に破棄し、後続 Disconnected で復旧待機しない', async () => {
+    const s = setup();
+    const session = await s.manager.join(s.channel(), 'text');
+    s.manager.updateVoiceState('guild', 'moved');
+    expect(session.channelId).toBe('moved');
+    expect(session.readsChannel('text')).toBe(true);
+    expect(session.readsChannel('vc')).toBe(false);
+    vi.mocked(entersState).mockClear();
+    s.manager.updateVoiceState('guild', null);
+    s.connections[0].emit('disconnected');
+    await flush();
+    expect(s.manager.get('guild')).toBeUndefined();
+    expect(entersState).not.toHaveBeenCalled();
+  });
+  it('復旧待機中のキックも後続 Ready 待機を抑止する', async () => {
+    const s = setup();
+    await s.manager.join(s.channel(), 'text');
+    vi.mocked(entersState).mockClear();
+    s.connections[0].emit('disconnected');
+    s.manager.updateVoiceState('guild', null);
+    await flush();
+    expect(vi.mocked(entersState).mock.calls.some(([, status]) => String(status) === 'ready')).toBe(
+      false,
+    );
+  });
+  it('手動 join と auto の競合では既存の手動接続を維持する', async () => {
+    const s = setup();
+    const manual = s.manager.join(s.channel(), 'text');
+    const auto = s.manager.join(s.channel('other'), 'auto');
+    expect(await auto).toBe(await manual);
+    expect(joinVoiceChannel).toHaveBeenCalledTimes(1);
+  });
   it('Ready を待ち、同じ VC なら対象テキストだけ更新する', async () => {
     const s = setup();
     const session = await s.manager.join(s.channel(), 'text');

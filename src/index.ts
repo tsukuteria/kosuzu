@@ -12,6 +12,7 @@ import { SpeakerCatalog } from './tts/speakers.js';
 import { VoicevoxClient, type TtsEngine } from './tts/voicevox.js';
 import { VoiceSessionManager } from './voice/manager.js';
 import { createVoiceResolver } from './voice/resolver.js';
+import { AutoJoin } from './voice/autoJoin.js';
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
@@ -39,11 +40,30 @@ const context: CommandContext = {
   resolveVoice: createVoiceResolver(store, catalog, config.defaultStyleId, logger),
 };
 client.on(Events.MessageCreate, (message) => handleMessage(message, context, config, logger));
+const resolveAnnouncement = createVoiceResolver(
+  { user: () => undefined, guild: (id) => store.guild(id) },
+  catalog,
+  config.defaultStyleId,
+  logger,
+);
+const autoJoin = new AutoJoin(
+  sessions,
+  store,
+  (guildId) => resolveAnnouncement(guildId, ''),
+  config.autoLeaveGraceMs,
+  logger,
+);
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  void autoJoin
+    .update(oldState, newState)
+    .catch((error: unknown) => logger.warn({ err: error }, '音声状態の処理に失敗しました'));
+});
 
 client.once(Events.ClientReady, (readyClient) => {
   void checkVoicevoxHealth(ttsEngine, logger);
   try {
     handleReady(readyClient, logger);
+    void autoJoin.scan(readyClient.guilds.cache.values());
   } catch (error) {
     logger.error({ err: error }, '起動イベントの処理に失敗しました');
   }

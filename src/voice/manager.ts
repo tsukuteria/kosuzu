@@ -21,6 +21,26 @@ export class VoiceSessionManager {
   private readonly sessions = new Map<string, GuildVoiceSession>();
   private readonly pending = new Map<string, Promise<GuildVoiceSession>>();
   private generation = 0;
+  readonly onChange = new Set<(guildId: string) => void>();
+  readonly onShutdown = new Set<() => void>();
+
+  updateVoiceState(
+    guildId: string,
+    channelId: string | null,
+    previousChannelId?: string | null,
+  ): void {
+    const session = this.get(guildId);
+    if (!session) return;
+    if (
+      previousChannelId !== undefined &&
+      previousChannelId !== session.channelId &&
+      channelId !== session.channelId
+    )
+      return;
+    if (channelId === null) session.destroy();
+    else session.move(channelId);
+    for (const listener of this.onChange) listener(guildId);
+  }
 
   constructor(
     private readonly engine: Pick<TtsEngine, 'synthesize'>,
@@ -67,6 +87,8 @@ export class VoiceSessionManager {
     const operation = (async () => {
       if (prior) await prior.catch(() => {});
       if (generation !== this.generation) throw new Error('終了処理中です');
+      if (textChannelId === 'auto' && this.get(channel.guild.id))
+        return this.get(channel.guild.id)!;
       const targets = await this.readTargets(channel, textChannelId);
       if (generation !== this.generation) throw new Error('終了処理中です');
       const existing = this.get(channel.guild.id);
@@ -115,6 +137,7 @@ export class VoiceSessionManager {
         this.logger,
         () => {
           if (this.get(channel.guild.id) === session) this.sessions.delete(channel.guild.id);
+          for (const listener of this.onChange) listener(channel.guild.id);
         },
       );
       this.sessions.set(channel.guild.id, session);
@@ -124,12 +147,17 @@ export class VoiceSessionManager {
       );
       connection.on(VoiceConnectionStatus.Destroyed, () => session.destroy());
       connection.on(VoiceConnectionStatus.Disconnected, () => {
+        if (this.get(channel.guild.id) !== session) return;
         void Promise.any([
           entersState(connection, VoiceConnectionStatus.Signalling, 5000),
           entersState(connection, VoiceConnectionStatus.Connecting, 5000),
         ])
-          .then(() => entersState(connection, VoiceConnectionStatus.Ready, 15000))
+          .then(() => {
+            if (this.get(channel.guild.id) === session)
+              return entersState(connection, VoiceConnectionStatus.Ready, 15000);
+          })
           .catch((error: unknown) => {
+            if (this.get(channel.guild.id) !== session) return;
             this.logger.warn({ err: error }, '音声接続の復旧に失敗しました');
             session.destroy();
           });
@@ -140,6 +168,8 @@ export class VoiceSessionManager {
         session.destroy();
         throw error;
       }
+      if (this.get(channel.guild.id) !== session) throw new Error('音声接続が切断されました');
+      for (const listener of this.onChange) listener(channel.guild.id);
       return session;
     })();
     this.pending.set(channel.guild.id, operation);
@@ -161,6 +191,7 @@ export class VoiceSessionManager {
 
   destroyAll(): void {
     this.generation++;
+    for (const listener of this.onShutdown) listener();
     for (const session of this.sessions.values()) session.destroy();
   }
 }

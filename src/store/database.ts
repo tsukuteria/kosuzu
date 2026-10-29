@@ -18,6 +18,8 @@ const migrations = [
   ) STRICT;
   CREATE UNIQUE INDEX enabled_guild ON enabled_speakers(guild_id, speaker_uuid) WHERE guild_id IS NOT NULL;
   CREATE UNIQUE INDEX enabled_global ON enabled_speakers(speaker_uuid) WHERE guild_id IS NULL;`,
+  `ALTER TABLE guild_settings ADD COLUMN autojoin INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE guild_settings ADD COLUMN excluded_voice_channels TEXT NOT NULL DEFAULT '[]';`,
 ];
 
 export function migrate(db: DatabaseSync): void {
