@@ -3,6 +3,8 @@ import type { Logger } from 'pino';
 export interface Utterance {
   text: string;
   styleId: number;
+  speedScale?: number;
+  pitchScale?: number;
 }
 export interface SessionPlayer {
   play(pcm: Buffer): void;
@@ -18,6 +20,7 @@ interface Item {
 }
 
 export class GuildVoiceSession {
+  private readChannelIds = new Set<string>();
   private queue: Item[] = [];
   private current?: Item;
   private destroyed = false;
@@ -25,7 +28,7 @@ export class GuildVoiceSession {
 
   constructor(
     readonly channelId: string,
-    public textChannelId: string,
+    textChannelIds: Iterable<string>,
     private readonly player: SessionPlayer,
     private readonly connection: { destroy(): void },
     private readonly synthesize: (utterance: Utterance) => Promise<Buffer>,
@@ -33,6 +36,7 @@ export class GuildVoiceSession {
     private readonly logger: Pick<Logger, 'warn'>,
     private readonly onDestroy: () => void = () => {},
   ) {
+    this.setReadChannels(textChannelIds);
     player.onIdle(() => {
       this.current = undefined;
       this.pump();
@@ -41,6 +45,14 @@ export class GuildVoiceSession {
       this.logger.warn({ err: error }, '音声の再生に失敗しました');
       this.skip();
     });
+  }
+
+  setReadChannels(ids: Iterable<string>): void {
+    this.readChannelIds = new Set([this.channelId, ...ids]);
+  }
+
+  readsChannel(id: string): boolean {
+    return this.readChannelIds.has(id);
   }
 
   enqueue(utterance: Utterance): boolean {

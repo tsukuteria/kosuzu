@@ -56,23 +56,25 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 
 ### 4.1 スラッシュコマンド（初期案）
 
-| コマンド | 権限 | 内容 |
-|----------|------|------|
-| `/join` | 全員 | 実行者のいる VC に参加し、実行チャンネルを読み上げ対象にする |
-| `/leave` | 全員 | VC から退出 |
-| `/skip` | 全員 | 再生中の読み上げをスキップ |
-| `/voice set <speaker>` | 全員 | 自分の話者（キャラ・スタイル）を設定。オートコンプリートで候補表示 |
-| `/voice show` | 全員 | 自分の現在の話者・速度等を表示 |
-| `/voice speed` `/voice pitch` | 全員 | 自分の話速・ピッチ調整 |
-| `/voice list` | 全員 | 利用可能なキャラ一覧 |
-| `/dict add|remove|list` | 全員（設定で制限可） | サーバー辞書（読み替え）管理 |
-| `/config autojoin on|off` | 管理者 | 自動参加の有効/無効 |
-| `/config channel <text>` | 管理者 | 自動参加時の読み上げ対象テキストチャンネル |
-| `/config default-voice` | 管理者 | サーバー既定の話者 |
-| `/speaker install <name>` | 管理者 | 新規キャラのインストール（§4.5） |
-| `/speaker uninstall <name>` | 管理者 | キャラの無効化 |
-| `/credits` | 全員 | VOICEVOX および各キャラのクレジット表記 |
+| コマンド                      | 権限   | 内容                                                                                   |
+| ----------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `/join`                       | 全員   | 実行者のいる VC に参加し、実行チャンネルと VC チャットを読み上げ対象にする（公開返信） |
+| `/leave`                      | 全員   | VC から退出（公開返信）                                                                |
+| `/skip`                       | 全員   | 再生中の読み上げをスキップ（公開返信）                                                 |
+| `/voice set <speaker>`        | 全員   | 自分の話者（キャラ・スタイル）を設定。オートコンプリートで候補表示                     |
+| `/voice show`                 | 全員   | 自分の現在の話者・速度等を表示                                                         |
+| `/voice speed` `/voice pitch` | 全員   | 自分の話速・ピッチ調整                                                                 |
+| `/voice reset`                | 全員   | 自分の音声設定を削除（非公開）                                                         |
+| `/voice list`                 | 全員   | 利用可能なキャラ一覧                                                                   |
+| `/dict add\|remove\|list` | 全員（設定で制限可） | サーバー辞書（読み替え）管理 |
+| `/config autojoin on\|off` | 管理者 | 自動参加の有効/無効 |
+| `/config channel <text>`      | 管理者 | 自動参加時の読み上げ対象テキストチャンネル                                             |
+| `/config default-voice`       | 管理者 | サーバー既定の話者                                                                     |
+| `/speaker install <name>`     | 管理者 | 新規キャラのインストール（§4.5）                                                       |
+| `/speaker uninstall <name>`   | 管理者 | キャラの無効化                                                                         |
+| `/credits`                    | 全員   | VOICEVOX および各キャラのクレジット表記                                                |
 
+- `/voice` の返信はすべて非公開。`/join`・`/skip`・`/leave` の実行結果は公開、入力・権限エラーは非公開。
 - 管理者向けコマンドは `setDefaultMemberPermissions(ManageGuild)` で既定非表示にし、ハンドラ側でも権限を再チェックする。
 - コマンド登録は `npm run deploy-commands` で行う（開発時はギルドコマンド、本番はグローバルコマンド）。
 
@@ -83,7 +85,8 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 - **開始検知**: Bot が未接続のサーバーで、ある VC の人間が 0 → 1 になったら参加。
 - **終了検知**: Bot が接続中の VC の人間が 0 になったら退出（短い猶予時間を設けて瞬断・移動に耐える）。
 - 複数の VC で同時にセッションがある場合は先着の VC に留まる（1 サーバー 1 接続の Discord 制約）。
-- 読み上げ対象テキストチャンネルは `/config channel` の設定、未設定なら VC 内蔵テキストチャンネル。
+- 読み上げ対象はチャンネル ID の集合。手動 `/join` は実行チャンネルと VC 内蔵チャット（VC と同じ ID）。VC 移動時は移動先のチャットに追従する。
+- `/join` 実行時に `last_text_channel_id` を保存。M4 の `sessions.join(channel, 'auto')` は VC チャットと最後の実行チャンネル（現在も存在し、Bot が閲覧・送信可能な場合）を読む。M5 で自動参加検出からこの経路を利用する。`/config channel` の拡張は M7。
 - AFK チャンネルや、設定で除外した VC は対象外。
 - 参加・退出時に「接続しました」等の短いアナウンスを読み上げる（設定で切替）。
 - Bot 起動時は既存の VC 状態をスキャンし、セッション中の VC があれば参加する。
@@ -92,15 +95,18 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 
 - 保存単位は `(guild_id, user_id)`。未設定ならサーバー既定 → グローバル既定の順にフォールバック。
 - 話者は VOICEVOX の `style_id` で保持し、表示時は `/speakers` から名前を引く。
-- 初期状態で選択可能にする「主要キャラ」はホワイトリスト（例: 四国めたん、ずんだもん、春日部つむぎ、雨晴はう、波音リツ、玄野武宏、白上虎太郎、青山龍星、冥鳴ひまり、九州そら など）で定義し、設定ファイルで変更可能にする。
+- 初期状態で選択可能にする「主要キャラ」はホワイトリスト（例: 四国めたん、ずんだもん、春日部つむぎ、雨晴はう、波音リツ、玄野武宏、白上虎太郎、青山龍星、冥鳴ひまり、九州そら）の UUID 定数で定義する。追加有効化は DB の全体・ギルド別行を利用し、ENGINE に存在する話者との積集合だけを公開する。
 
 ### 4.4 データモデル（SQLite）
 
-- `guild_settings(guild_id PK, autojoin, text_channel_id, default_style_id, excluded_channels, max_length, ...)`
-- `user_voices(guild_id, user_id, style_id, speed, pitch, PK(guild_id, user_id))`
-- `dictionary(guild_id, surface, reading, PK(guild_id, surface))`
-- `enabled_speakers(guild_id NULL=global, speaker_uuid, installed_at, installed_by)`
-- マイグレーションは連番 SQL ファイルを起動時に適用。
+- M4 migration 1（TypeScript 内の連番 SQL、STRICT テーブル）:
+  - `guild_settings(guild_id TEXT PK, default_style_id INTEGER NULL, last_text_channel_id TEXT NULL)`
+  - `user_voices(guild_id TEXT, user_id TEXT, style_id INTEGER NULL, speed REAL NOT NULL DEFAULT 1 CHECK(0.5〜2.0), pitch REAL NOT NULL DEFAULT 0 CHECK(-0.15〜0.15), PK(guild_id,user_id))`
+  - `enabled_speakers(guild_id TEXT NULL=global, speaker_uuid TEXT NOT NULL, installed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, installed_by TEXT NOT NULL)`
+- `enabled_speakers` はギルド行 `(guild_id,speaker_uuid)` とグローバル行 `(speaker_uuid)` に別々の部分 UNIQUE INDEX を設定し、NULL の重複を防ぐ。
+- `style_id NULL` は速度・ピッチのみ指定して既定話者に追従するため。話者の解決はユーザー → サーバー既定 → 環境設定。利用不可の保存 ID は debug ログ付きで飛ばす。速度・ピッチはユーザー値、未設定なら 1 / 0。設定の既定 ID も利用不可なら解決失敗（発話単位で捕捉）。カタログは既存の ENGINE クライアントの TTL キャッシュを利用。
+- `DATABASE_PATH` の既定は `data/kosuzu.db`。親ディレクトリ自動作成、WAL・foreign_keys・busy_timeout 有効化。`PRAGMA user_version` で版を管理し、未適用分を起動時に単一トランザクションで順番に適用。未来版は拒否。正常終了時は DB を閉じる。
+- `dictionary` や autojoin 等の設定列は後続マイルストーンのマイグレーションで追加する。
 
 ### 4.5 キャラの「インストール」（R6）
 

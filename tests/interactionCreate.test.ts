@@ -1,12 +1,26 @@
+import { openDatabase } from '../src/store/database.js';
+import { SqliteSettings } from '../src/store/settings.js';
+import { SpeakerCatalog } from '../src/tts/speakers.js';
 import { MessageFlags, type Interaction } from 'discord.js';
 import type { Logger } from 'pino';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Command, CommandContext } from '../src/commands/types.js';
 import { handleInteraction } from '../src/events/interactionCreate.js';
 
+const databases: ReturnType<typeof openDatabase>[] = [];
+afterEach(() => databases.splice(0).forEach((db) => db.close()));
+function createStore() {
+  const db = openDatabase(':memory:');
+  databases.push(db);
+  return new SqliteSettings(db);
+}
+
 function setup(execute = vi.fn().mockResolvedValue(undefined)) {
   const interaction = {
-    isChatInputCommand: () => true,
+    isChatInputCommand: (): boolean => true,
+    isAutocomplete: (): boolean => false,
+    responded: false,
+    respond: vi.fn().mockResolvedValue(undefined),
     commandName: 'ping',
     replied: false,
     deferred: false,
@@ -17,7 +31,9 @@ function setup(execute = vi.fn().mockResolvedValue(undefined)) {
   const logger = { error: vi.fn() };
   const context: CommandContext = {
     sessions: { join: vi.fn(), leave: vi.fn(), get: vi.fn() },
-    resolveStyle: () => 3,
+    store: createStore(),
+    catalog: new SpeakerCatalog({ styles: async () => [] }, { enabledSpeakers: () => [] }),
+    resolveVoice: async () => ({ styleId: 3, speedScale: 1, pitchScale: 0 }),
   };
   return {
     interaction,
@@ -62,4 +78,18 @@ describe('handleInteraction', () => {
     await context.run();
     expect(context.interaction.followUp).toHaveBeenCalled();
   });
+  it.each([true, false])(
+    '候補に context を渡し、失敗なら空候補を返信する (%s)',
+    async (success) => {
+      const s = setup();
+      s.interaction.isChatInputCommand = () => false;
+      s.interaction.isAutocomplete = () => true;
+      s.command.autocomplete = vi.fn().mockImplementation(async () => {
+        if (!success) throw new Error('engine');
+      });
+      await s.run();
+      expect(s.command.autocomplete).toHaveBeenCalledWith(s.interaction, s.context);
+      if (!success) expect(s.interaction.respond).toHaveBeenCalledWith([]);
+    },
+  );
 });

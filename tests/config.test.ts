@@ -15,6 +15,7 @@ describe('validateConfig', () => {
       VOICEVOX_URL: '',
     });
     expect(config).toEqual({
+      databasePath: 'data/kosuzu.db',
       discordToken: 'token',
       discordClientId: 'id',
       discordDevGuildId: undefined,
@@ -67,12 +68,14 @@ describe('validateConfig', () => {
       LOG_LEVEL: 'debug',
       VOICEVOX_URL: 'http://localhost:50021',
       VOICEVOX_TIMEOUT_MS: ' 20000 ',
+      DATABASE_PATH: ' custom/voice.db ',
     });
     expect(config).toMatchObject({
       discordDevGuildId: 'guild',
       logLevel: 'debug',
       voicevoxUrl: 'http://localhost:50021',
       voicevoxTimeoutMs: 20_000,
+      databasePath: 'custom/voice.db',
     });
   });
   it.each(['0', '-1', '1.5', 'NaN', 'Infinity', '2147483648'])(

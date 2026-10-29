@@ -337,6 +337,37 @@ describe('VoicevoxClient', () => {
     expect(fetch).toHaveBeenCalledTimes(4);
   });
 
+  it('同時の話者取得はリクエストを共有する', async () => {
+    const { client, fetch } = setup();
+    let resolve!: (response: Response) => void;
+    fetch.mockReturnValue(
+      new Promise<Response>((done) => {
+        resolve = done;
+      }),
+    );
+    const first = client.speakers();
+    const second = client.speakers();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    resolve(Response.json(speakers));
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).toEqual(speakers);
+    expect(b).toEqual(speakers);
+    expect(a).not.toBe(b);
+  });
+
+  it('取得失敗後は再取得できる', async () => {
+    const { client, fetch } = setup();
+    fetch
+      .mockResolvedValueOnce(new Response('error', { status: 500 }))
+      .mockResolvedValueOnce(Response.json(speakers));
+    const first = client.speakers();
+    const second = client.speakers();
+    await expect(first).rejects.toThrow();
+    await expect(second).rejects.toThrow();
+    expect(await client.speakers()).toEqual(speakers);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('取得中に無効化したカタログをキャッシュに戻さない', async () => {
     const { client, fetch } = setup();
     let resolve!: (response: Response) => void;

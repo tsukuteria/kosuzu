@@ -28,7 +28,13 @@ export async function handleInteraction(
       }
     } else if (interaction.isAutocomplete()) {
       const command = commands.find((item) => item.data.name === interaction.commandName);
-      if (command?.autocomplete) await command.autocomplete(interaction);
+      try {
+        if (command?.autocomplete) await command.autocomplete(interaction, context);
+        else await interaction.respond([]);
+      } catch (error) {
+        logger.error({ err: error }, '候補の取得に失敗しました');
+        if (!interaction.responded) await interaction.respond([]);
+      }
     }
   } catch (error) {
     logger.error({ err: error }, 'インタラクションの処理に失敗しました');

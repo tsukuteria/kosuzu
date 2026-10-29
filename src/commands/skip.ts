@@ -1,4 +1,4 @@
-import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 import type { Command } from './types.js';
 
 export const skip: Command = {
@@ -8,7 +8,6 @@ export const skip: Command = {
     session?.skip();
     await interaction.reply({
       content: session ? 'スキップしました' : '接続していません',
-      flags: MessageFlags.Ephemeral,
     });
   },
 };

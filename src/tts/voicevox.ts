@@ -145,6 +145,7 @@ export class VoicevoxClient implements TtsEngine {
   private readonly speakerCacheTtlMs: number;
   private speakerCache?: { value: Speaker[]; expiresAt: number };
   private catalogGeneration = 0;
+  private speakerRequest?: Promise<Speaker[]>;
 
   constructor(private readonly options: VoicevoxClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -162,20 +163,30 @@ export class VoicevoxClient implements TtsEngine {
     if (this.speakerCache && this.speakerCache.expiresAt > Date.now()) {
       return structuredClone(this.speakerCache.value);
     }
-    const generation = this.catalogGeneration;
-    const value = await this.json<Speaker[]>(
-      '/speakers',
-      (value) => Array.isArray(value) && value.every(isSpeaker),
-    );
-    if (generation === this.catalogGeneration) {
-      this.speakerCache = { value, expiresAt: Date.now() + this.speakerCacheTtlMs };
+    if (!this.speakerRequest) {
+      const generation = this.catalogGeneration;
+      this.speakerRequest = this.json<Speaker[]>(
+        '/speakers',
+        (value) => Array.isArray(value) && value.every(isSpeaker),
+      ).then((value) => {
+        if (generation === this.catalogGeneration) {
+          this.speakerCache = { value, expiresAt: Date.now() + this.speakerCacheTtlMs };
+        }
+        return value;
+      });
     }
-    return structuredClone(value);
+    const request = this.speakerRequest;
+    try {
+      return structuredClone(await request);
+    } finally {
+      if (this.speakerRequest === request) this.speakerRequest = undefined;
+    }
   }
 
   invalidateSpeakers(): void {
     this.catalogGeneration++;
     this.speakerCache = undefined;
+    this.speakerRequest = undefined;
   }
 
   refreshSpeakers(): Promise<Speaker[]> {

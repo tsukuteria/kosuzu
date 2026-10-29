@@ -3,18 +3,18 @@ import type { Logger } from 'pino';
 import type { CommandContext } from '../commands/types.js';
 import { normalizeText } from '../tts/normalize.js';
 
-export function handleMessage(
+export async function handleMessage(
   message: Message,
   context: CommandContext,
   options: { readSkipPrefix: string; readMaxLength: number },
   logger: Pick<Logger, 'error'>,
-): void {
+): Promise<void> {
   try {
     if (!message.guildId || message.author.bot || message.system) return;
     const session = context.sessions.get(message.guildId);
     if (
       !session ||
-      session.textChannelId !== message.channelId ||
+      !session.readsChannel(message.channelId) ||
       (options.readSkipPrefix && message.content.startsWith(options.readSkipPrefix))
     )
       return;
@@ -38,7 +38,10 @@ export function handleMessage(
       },
     });
     if (text)
-      session.enqueue({ text, styleId: context.resolveStyle(message.guildId, message.author.id) });
+      session.enqueue({
+        text,
+        ...(await context.resolveVoice(message.guildId, message.author.id)),
+      });
   } catch (error) {
     logger.error({ err: error }, 'メッセージの読み上げ処理に失敗しました');
   }

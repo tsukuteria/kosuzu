@@ -27,7 +27,7 @@ function setup(max = 20) {
   const removed = vi.fn();
   const session = new GuildVoiceSession(
     'vc',
-    'text',
+    ['text'],
     player,
     connection,
     synthesize,

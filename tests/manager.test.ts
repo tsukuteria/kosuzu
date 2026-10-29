@@ -1,3 +1,5 @@
+import { openDatabase } from '../src/store/database.js';
+import { SqliteSettings } from '../src/store/settings.js';
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VoiceBasedChannel } from 'discord.js';
@@ -66,7 +68,9 @@ describe('VoiceSessionManager', () => {
     expect(joinVoiceChannel).toHaveBeenCalledWith(expect.objectContaining({ selfDeaf: true }));
     expect(entersState).toHaveBeenCalledWith(s.connections[0], 'ready', 15000);
     expect(await s.manager.join(s.channel(), 'next')).toBe(session);
-    expect(session.textChannelId).toBe('next');
+    expect(session.readsChannel('next')).toBe(true);
+    expect(session.readsChannel('vc')).toBe(true);
+    expect(session.readsChannel('text')).toBe(false);
     expect(joinVoiceChannel).toHaveBeenCalledTimes(1);
   });
   it('別 VC へは古い接続を破棄して移動する', async () => {
@@ -75,6 +79,9 @@ describe('VoiceSessionManager', () => {
     const next = await s.manager.join(s.channel('next'), 'other');
     expect(s.connections[0].destroy).toHaveBeenCalledTimes(1);
     expect(s.manager.get('guild')).toBe(next);
+    expect(next.readsChannel('next')).toBe(true);
+    expect(next.readsChannel('vc')).toBe(false);
+    expect(next.readsChannel('other')).toBe(true);
     s.manager.destroyAll();
     expect(s.manager.get('guild')).toBeUndefined();
     expect(s.connections[1].destroy).toHaveBeenCalledTimes(1);
@@ -114,5 +121,56 @@ describe('VoiceSessionManager', () => {
     });
     expect(s.logger.warn).toHaveBeenCalled();
     expect(createAudioResource).not.toHaveBeenCalled();
+  });
+  it.each(['allowed', 'denied', 'deleted', 'fetchError'])(
+    'auto は閲覧・送信できる最後の join チャンネルだけ追加する (%s)',
+    async (kind) => {
+      const s = setup();
+      const db = openDatabase(':memory:');
+      try {
+        const store = new SqliteSettings(db);
+        store.setLastTextChannel('guild', 'last');
+        const manager = new VoiceSessionManager(s.engine, s.logger as unknown as Logger, 20, store);
+        const fetch = vi.fn().mockResolvedValue(
+          kind === 'deleted'
+            ? null
+            : {
+                isTextBased: () => true,
+                permissionsFor: () => ({ has: () => kind === 'allowed' }),
+              },
+        );
+        if (kind === 'fetchError') fetch.mockRejectedValue(new Error('missing'));
+        const channel = {
+          id: 'vc',
+          guild: { id: 'guild', members: { me: {} }, channels: { fetch } },
+        } as unknown as VoiceBasedChannel;
+        expect(await manager.readTargets(channel, 'auto')).toEqual(
+          new Set(kind === 'allowed' ? ['vc', 'last'] : ['vc']),
+        );
+        const session = await manager.join(channel, 'auto');
+        expect(session.readsChannel('vc')).toBe(true);
+        expect(session.readsChannel('last')).toBe(kind === 'allowed');
+        expect(store.guild('guild')?.lastTextChannelId).toBe('last');
+        manager.destroyAll();
+      } finally {
+        db.close();
+      }
+    },
+  );
+  it('ユーザーの速度・ピッチを合成に渡す', async () => {
+    const s = setup();
+    const session = await s.manager.join(s.channel(), 'text');
+    session.enqueue({ text: 'hello', styleId: 8, speedScale: 1.5, pitchScale: -0.1 });
+    await flush();
+    expect(s.engine.synthesize).toHaveBeenCalledWith('hello', 8, {
+      speedScale: 1.5,
+      pitchScale: -0.1,
+      outputSamplingRate: 48000,
+      outputStereo: true,
+    });
+  });
+  it('最後の join がない auto 参加は VC チャットだけを読む', async () => {
+    const s = setup();
+    expect(await s.manager.readTargets(s.channel(), 'auto')).toEqual(new Set(['vc']));
   });
 });

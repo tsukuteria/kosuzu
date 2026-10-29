@@ -8,7 +8,8 @@ import {
   joinVoiceChannel,
   StreamType,
 } from '@discordjs/voice';
-import type { VoiceBasedChannel } from 'discord.js';
+import { PermissionFlagsBits, type VoiceBasedChannel } from 'discord.js';
+import type { SettingsStore } from '../store/settings.js';
 import type { Logger } from 'pino';
 import type { TtsEngine } from '../tts/voicevox.js';
 import { wavToPcm } from '../tts/wav.js';
@@ -25,21 +26,52 @@ export class VoiceSessionManager {
     private readonly engine: Pick<TtsEngine, 'synthesize'>,
     private readonly logger: Logger,
     private readonly maxQueueLength: number,
+    private readonly store?: Pick<SettingsStore, 'guild'>,
   ) {}
 
   get(guildId: string): GuildVoiceSession | undefined {
     return this.sessions.get(guildId);
   }
 
-  async join(channel: VoiceBasedChannel, textChannelId: string): Promise<GuildVoiceSession> {
+  async readTargets(
+    channel: VoiceBasedChannel,
+    textChannelId: string | 'auto',
+  ): Promise<Set<string>> {
+    const targets = new Set([channel.id]);
+    if (textChannelId !== 'auto') targets.add(textChannelId);
+    else {
+      const last = this.store?.guild(channel.guild.id)?.lastTextChannelId;
+      if (last) {
+        const text = await channel.guild.channels.fetch(last).catch(() => null);
+        const me = channel.guild.members.me;
+        if (
+          text &&
+          me &&
+          text.isTextBased() &&
+          text
+            .permissionsFor(me)
+            ?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])
+        )
+          targets.add(last);
+      }
+    }
+    return targets;
+  }
+
+  async join(
+    channel: VoiceBasedChannel,
+    textChannelId: string | 'auto',
+  ): Promise<GuildVoiceSession> {
     const prior = this.pending.get(channel.guild.id);
     const generation = this.generation;
     const operation = (async () => {
       if (prior) await prior.catch(() => {});
       if (generation !== this.generation) throw new Error('終了処理中です');
+      const targets = await this.readTargets(channel, textChannelId);
+      if (generation !== this.generation) throw new Error('終了処理中です');
       const existing = this.get(channel.guild.id);
       if (existing?.channelId === channel.id) {
-        existing.textChannelId = textChannelId;
+        existing.setReadChannels(targets);
         return existing;
       }
       this.leave(channel.guild.id);
@@ -52,7 +84,7 @@ export class VoiceSessionManager {
       const player = createAudioPlayer();
       const session = new GuildVoiceSession(
         channel.id,
-        textChannelId,
+        targets,
         {
           play: (pcm) =>
             player.play(createAudioResource(Readable.from([pcm]), { inputType: StreamType.Raw })),
@@ -71,9 +103,10 @@ export class VoiceSessionManager {
             if (connection.state.status !== VoiceConnectionStatus.Destroyed) connection.destroy();
           },
         },
-        async ({ text, styleId }) =>
+        async ({ text, styleId, ...overrides }) =>
           wavToPcm(
             await this.engine.synthesize(text, styleId, {
+              ...overrides,
               outputSamplingRate: 48000,
               outputStereo: true,
             }),

@@ -14,6 +14,7 @@ export const join: Command = {
       });
       return;
     }
+    context.store.setLastTextChannel(interaction.guildId, interaction.channelId);
     const channel = interaction.member.voice.channel;
     if (!channel) {
       await interaction.reply({
@@ -41,10 +42,10 @@ export const join: Command = {
       await interaction.editReply('VC に接続できませんでした。権限や接続状態を確認してください');
       return;
     }
+    await interaction.editReply(`${channel.name} に接続しました。このチャンネルを読み上げます`);
     session.enqueue({
       text: JOIN_ANNOUNCEMENT,
-      styleId: context.resolveStyle(interaction.guildId, interaction.user.id),
+      ...(await context.resolveVoice(interaction.guildId, interaction.user.id)),
     });
-    await interaction.editReply(`${channel.name} に接続しました。このチャンネルを読み上げます`);
   },
 };
