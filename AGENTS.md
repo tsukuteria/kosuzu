@@ -37,6 +37,8 @@ M4: `store/database.ts` がマイグレーション、`store/settings.ts` が SQ
 
 M5: `voice/autoJoin.ts` が純粋な開始・候補選択関数とギルド別の自動判定・退出タイマーを持つ。manager の変更・終了通知で手動接続と shutdown に追従する。Bot 自身の移動・切断は manager に即時反映する。`commands/config.ts` が管理権限を再確認し、migration 2 の自動参加・除外設定と既定話者を操作する。
 
+M6: `commands/speaker.ts` がギルド別有効化と規約確認 collector、`commands/credits.ts` が公開クレジットを担当する。`tts/policy.ts` が規約 URL・抜粋、`tts/library.ts` が上限付き ZIP 取得。共通 context で ENGINE と pino logger を注入する。
+
 ## コマンド（M1 以降で整備）
 
 - `npm install` 依存関係のインストール

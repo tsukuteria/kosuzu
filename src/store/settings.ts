@@ -12,6 +12,10 @@ export interface GuildSettings {
   lastTextChannelId: string | null;
 }
 export interface SettingsStore {
+  enableSpeaker(guildId: string | null, uuid: string, installedBy: string): void;
+  disableSpeaker(guildId: string | null, uuid: string): void;
+  speakerInstalls(guildId: string): SpeakerInstall[];
+  countStyleUsers(guildId: string, styleIds: number[]): number;
   setAutojoin(guildId: string, enabled: boolean): void;
   setVoiceChannelExcluded(guildId: string, channelId: string, excluded: boolean): void;
   guild(guildId: string): GuildSettings | undefined;
@@ -23,8 +27,31 @@ export interface SettingsStore {
   enabledSpeakers(guildId: string): string[];
 }
 
+export interface SpeakerInstall {
+  speakerUuid: string;
+  installedBy: string;
+  installedAt: string;
+}
+
 export class SqliteSettings implements SettingsStore {
   constructor(private readonly db: DatabaseSync) {}
+
+  countStyleUsers(guildId: string, styleIds: number[]): number {
+    if (!styleIds.length) return 0;
+    return this.db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM user_voices WHERE guild_id = ? AND style_id IN (${styleIds.map(() => '?').join(',')})`,
+      )
+      .get(guildId, ...styleIds)!.count as number;
+  }
+
+  speakerInstalls(guildId: string): SpeakerInstall[] {
+    return this.db
+      .prepare(
+        'SELECT speaker_uuid AS speakerUuid, installed_by AS installedBy, installed_at AS installedAt FROM enabled_speakers WHERE guild_id = ? ORDER BY installed_at, speaker_uuid',
+      )
+      .all(guildId) as unknown as SpeakerInstall[];
+  }
 
   guild(guildId: string): GuildSettings | undefined {
     const row = this.db

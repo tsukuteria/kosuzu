@@ -1,3 +1,4 @@
+import { VoicevoxClient } from '../src/tts/voicevox.js';
 import { openDatabase } from '../src/store/database.js';
 import { SqliteSettings } from '../src/store/settings.js';
 import { SpeakerCatalog } from '../src/tts/speakers.js';
@@ -30,6 +31,8 @@ function setup(execute = vi.fn().mockResolvedValue(undefined)) {
   const command: Command = { data: { name: 'ping', toJSON: () => ({}) }, execute };
   const logger = { error: vi.fn() };
   const context: CommandContext = {
+    engine: new VoicevoxClient({ baseUrl: 'http://unused' }),
+    logger: { warn: vi.fn() },
     sessions: { join: vi.fn(), leave: vi.fn(), get: vi.fn() },
     store: createStore(),
     catalog: new SpeakerCatalog({ styles: async () => [] }, { enabledSpeakers: () => [] }),

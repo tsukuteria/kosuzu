@@ -1,3 +1,4 @@
+import { VoicevoxClient } from '../src/tts/voicevox.js';
 import { openDatabase } from '../src/store/database.js';
 import { SqliteSettings } from '../src/store/settings.js';
 import { SpeakerCatalog } from '../src/tts/speakers.js';
@@ -23,6 +24,8 @@ function setup() {
   const session = { enqueue, credits, channelId: 'vc' } as unknown as GuildVoiceSession;
   const connect = vi.fn().mockResolvedValue(session);
   const context: CommandContext = {
+    engine: new VoicevoxClient({ baseUrl: 'http://unused' }),
+    logger: { warn: vi.fn() },
     sessions: { join: connect, get: vi.fn(), leave: vi.fn() },
     store: createStore(),
     catalog: new SpeakerCatalog({ styles: async () => [] }, { enabledSpeakers: () => [] }),

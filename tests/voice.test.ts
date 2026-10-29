@@ -1,3 +1,4 @@
+import { VoicevoxClient } from '../src/tts/voicevox.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MessageFlags, type ChatInputCommandInteraction } from 'discord.js';
 import { voice, voiceListEmbeds } from '../src/commands/voice.js';
@@ -29,6 +30,8 @@ function setup(sub = 'set', value: string | number = '3') {
     store,
   );
   const context: CommandContext = {
+    engine: new VoicevoxClient({ baseUrl: 'http://unused' }),
+    logger: { warn: vi.fn() },
     store,
     catalog,
     resolveVoice: createVoiceResolver(store, catalog, 3, { debug: vi.fn() }),

@@ -25,6 +25,8 @@ function setup() {
   } as unknown as GuildVoiceSession;
   const get = vi.fn((): GuildVoiceSession | undefined => session);
   const context: CommandContext = {
+    engine: new VoicevoxClient({ baseUrl: 'http://unused' }),
+    logger: { warn: vi.fn() },
     sessions: { get, join: vi.fn(), leave: vi.fn() },
     store: createStore(),
     catalog: new SpeakerCatalog({ styles: async () => [] }, { enabledSpeakers: () => [] }),

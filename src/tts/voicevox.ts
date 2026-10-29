@@ -27,6 +27,8 @@ export interface EngineManifest {
 }
 
 export interface DownloadableLibrary {
+  policy?: string;
+  terms_of_service?: string;
   name: string;
   uuid: string;
   version: string;
@@ -59,6 +61,7 @@ export type AudioQueryOverrides = Partial<
 >;
 
 export interface TtsEngine {
+  speakerInfo(uuid: string): Promise<{ policy: string }>;
   version(): Promise<string>;
   speakers(): Promise<Speaker[]>;
   refreshSpeakers(): Promise<Speaker[]>;
@@ -146,6 +149,26 @@ export class VoicevoxClient implements TtsEngine {
   private speakerCache?: { value: Speaker[]; expiresAt: number };
   private catalogGeneration = 0;
   private speakerRequest?: Promise<Speaker[]>;
+  private readonly policies = new Map<string, Promise<{ policy: string }>>();
+
+  async speakerInfo(uuid: string): Promise<{ policy: string }> {
+    let request = this.policies.get(uuid);
+    if (!request) {
+      request = this.json<{ policy: string }>(
+        '/speaker_info',
+        (value) => isObject(value) && typeof value.policy === 'string',
+        {},
+        { speaker_uuid: uuid, resource_format: 'url' },
+      ).then(({ policy }) => ({ policy }));
+      this.policies.set(uuid, request);
+    }
+    try {
+      return { ...(await request) };
+    } catch (error) {
+      if (this.policies.get(uuid) === request) this.policies.delete(uuid);
+      throw error;
+    }
+  }
 
   constructor(private readonly options: VoicevoxClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');

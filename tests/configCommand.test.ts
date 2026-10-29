@@ -1,3 +1,4 @@
+import { VoicevoxClient } from '../src/tts/voicevox.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ChannelType,
@@ -24,6 +25,8 @@ function setup(sub = 'show', value = '3') {
     speakerUuid: 'uuid',
   };
   const context: CommandContext = {
+    engine: new VoicevoxClient({ baseUrl: 'http://unused' }),
+    logger: { warn: vi.fn() },
     store,
     sessions: { join: vi.fn(), leave: vi.fn(), get: vi.fn() },
     catalog: {
