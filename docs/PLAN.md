@@ -121,6 +121,7 @@ VOICEVOX ENGINE の話者は通常エンジン同梱の音声モデル（VVM）�
 
 - Privileged Intent: **Message Content**（読み上げに必須）
 - Intents: `Guilds`, `GuildVoiceStates`, `GuildMessages`, `MessageContent`
+- Developer Portal の「Installation」で Guild Install を有効にし、スコープに `bot`, `applications.commands` を設定（User Install は無効でも可）
 - 招待スコープ: `bot`, `applications.commands`
 - Bot 権限: View Channels, Send Messages, Read Message History, Connect, Speak, Use Voice Activity
 
