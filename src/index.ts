@@ -2,11 +2,17 @@ import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { commands } from './commands/index.js';
 import { loadConfig } from './config.js';
 import { handleInteraction } from './events/interactionCreate.js';
-import { handleReady } from './events/ready.js';
+import { checkVoicevoxHealth, handleReady } from './events/ready.js';
 import { createLogger } from './logger.js';
+import { VoicevoxClient, type TtsEngine } from './tts/voicevox.js';
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
+const ttsEngine: TtsEngine = new VoicevoxClient({
+  baseUrl: config.voicevoxUrl,
+  timeoutMs: config.voicevoxTimeoutMs,
+  logger,
+});
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -17,6 +23,7 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, (readyClient) => {
+  void checkVoicevoxHealth(ttsEngine, logger);
   try {
     handleReady(readyClient, logger);
   } catch (error) {

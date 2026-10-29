@@ -20,6 +20,7 @@ describe('validateConfig', () => {
       discordDevGuildId: undefined,
       logLevel: 'info',
       voicevoxUrl: 'http://127.0.0.1:50021',
+      voicevoxTimeoutMs: 15_000,
     });
     expect(Object.isFrozen(config)).toBe(true);
   });
@@ -30,11 +31,25 @@ describe('validateConfig', () => {
       DISCORD_DEV_GUILD_ID: 'guild',
       LOG_LEVEL: 'debug',
       VOICEVOX_URL: 'http://localhost:50021',
+      VOICEVOX_TIMEOUT_MS: ' 20000 ',
     });
     expect(config).toMatchObject({
       discordDevGuildId: 'guild',
       logLevel: 'debug',
       voicevoxUrl: 'http://localhost:50021',
+      voicevoxTimeoutMs: 20_000,
     });
   });
+  it.each(['0', '-1', '1.5', 'NaN', 'Infinity', '2147483648'])(
+    '不正なタイムアウト %s を拒否する',
+    (value) => {
+      expect(() =>
+        validateConfig({
+          DISCORD_TOKEN: 'token',
+          DISCORD_CLIENT_ID: 'id',
+          VOICEVOX_TIMEOUT_MS: value,
+        }),
+      ).toThrow(/VOICEVOX_TIMEOUT_MS/);
+    },
+  );
 });

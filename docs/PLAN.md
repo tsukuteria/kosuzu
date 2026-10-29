@@ -48,6 +48,7 @@ Discord Gateway │  commands/   スラッシュコマンド定義・ハンド�
 - **GuildVoiceSession**: サーバーごとに 1 インスタンス。VC 接続、読み上げ対象テキストチャンネル、再生キュー（FIFO・直列再生）を保持する。
 - **読み上げパイプライン**: メッセージ受信 → フィルタ（Bot・コマンド・対象外チャンネル除外）→ 正規化（URL・メンション・絵文字・コードブロック置換、ユーザー辞書適用、文字数上限で切り詰め）→ `audio_query` → `synthesis` → キュー投入 → 再生。
 - 合成は再生と並行して先読みし、待ち時間を短くする。
+- **TtsEngine**: 後続の処理はこのインターフェースに依存し、`index.ts` で `VoicevoxClient` を構築する。GET の通信失敗のみ最大 2 回再試行し、POST は再試行しない。話者カタログは 5 分キャッシュし、明示的な更新・無効化とスタイル検索を提供する。
 
 ## 4. 機能設計
 
@@ -105,6 +106,8 @@ VOICEVOX ENGINE の話者は通常エンジン同梱の音声モデル（VVM）�
 
 1. **有効化（必須実装）**: エンジンが持つが Bot 側で未公開の話者を、選択可能リストに追加する。`/speaker install` のオートコンプリートには「エンジンにあるが未有効」の話者を出し、実行時に `POST /initialize_speaker` で事前ロードしてから `enabled_speakers` に登録する。
 2. **ライブラリ追加（エンジンが対応している場合）**: `GET /engine_manifest` の `supported_features.manage_library` が真なら、`GET /downloadable_libraries` → `POST /install_library/{uuid}` でエンジンに音声ライブラリを追加できるようにする。非対応エンジンでは「エンジンの更新が必要」と案内する。
+
+   `install_library` は ZIP 本体をリクエストボディに要求するため、M2 の `installLibrary(uuid, archive: Blob)` は呼び出し元から ZIP を受け取る。取得・規約確認は M6 で実装する。`installed_libraries` の応答は UUID をキーとするオブジェクト。インストール成功時は話者キャッシュを無効化する。
 
 新キャラの利用規約・クレジット表記が必要なため、インストール時に規約 URL を表示し `/credits` に自動反映する。
 

@@ -7,6 +7,18 @@ export interface Config {
   readonly discordDevGuildId: string | undefined;
   readonly logLevel: string;
   readonly voicevoxUrl: string;
+  readonly voicevoxTimeoutMs: number;
+}
+
+export function voicevoxConfig(env: NodeJS.ProcessEnv) {
+  const timeoutMs = Number(env.VOICEVOX_TIMEOUT_MS?.trim() || 15_000);
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new Error('VOICEVOX_TIMEOUT_MS は 1〜2147483647 の整数で指定してください');
+  }
+  return {
+    voicevoxUrl: env.VOICEVOX_URL?.trim() || 'http://127.0.0.1:50021',
+    voicevoxTimeoutMs: timeoutMs,
+  };
 }
 
 export function validateConfig(env: NodeJS.ProcessEnv): Readonly<Config> {
@@ -17,7 +29,7 @@ export function validateConfig(env: NodeJS.ProcessEnv): Readonly<Config> {
     discordClientId: env.DISCORD_CLIENT_ID!.trim(),
     discordDevGuildId: env.DISCORD_DEV_GUILD_ID?.trim() || undefined,
     logLevel: env.LOG_LEVEL?.trim() || 'info',
-    voicevoxUrl: env.VOICEVOX_URL?.trim() || 'http://127.0.0.1:50021',
+    ...voicevoxConfig(env),
   });
 }
 
